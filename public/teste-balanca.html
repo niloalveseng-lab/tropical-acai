@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Teste da Balança · Tropical Açaí</title>
+<style>
+:root{--roxo:#421268;--lima:#9ACD1F;--bg:#f7f3f9;--fg:#22102f;--muted:#6f5f7c;--line:#e7ddef}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--fg)}
+header{background:var(--roxo);color:#fff;padding:16px 20px}h1{margin:0;font-size:20px}
+main{max-width:720px;margin:0 auto;padding:20px;display:grid;gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px}
+.peso{font-size:56px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+.st{text-align:center;font-weight:700}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{border:0;border-radius:99px;padding:12px 18px;font-weight:800;background:var(--roxo);color:#fff;cursor:pointer;font-size:15px}
+button.l{background:var(--lima);color:#1e2a00}button:disabled{opacity:.5}
+select,input{padding:10px;border-radius:10px;border:1.5px solid var(--line);font-size:15px}
+pre{background:#22102f;color:#d7f59c;padding:12px;border-radius:10px;max-height:220px;overflow:auto;font-size:12.5px;margin:0}
+.muted{color:var(--muted);font-size:14px}
+</style></head><body>
+<header><h1>Teste da balança Toledo Prix 3 Fit</h1></header>
+<main>
+<div class="card" id="aviso"></div>
+<div class="card">
+  <div class="row">
+    <label>Velocidade <select id="baud"><option>2400</option><option>4800</option><option selected>9600</option><option>115200</option></select></label>
+    <button id="con">Conectar balança</button>
+    <button id="ler" class="l" disabled>Ler peso</button>
+    <label class="row"><input type="checkbox" id="auto" disabled> Leitura contínua</label>
+  </div>
+  <div class="peso" id="peso">—</div>
+  <div class="st" id="st">Desconectada</div>
+  <div class="row"><label>Tara (g) <input id="tara" type="number" value="0" style="width:100px"></label>
+    <label>Preço/kg (R$) <input id="kg" type="number" step="0.01" value="49.99" style="width:110px"></label>
+    <b id="valor" style="margin-left:auto;font-size:22px">R$ 0,00</b></div>
+</div>
+<div class="card"><b>Respostas da balança (para suporte)</b><pre id="log"></pre></div>
+<div class="card muted">
+  <b style="color:var(--fg)">Se não funcionar</b>
+  <ol style="margin:0;padding-left:18px;display:grid;gap:4px">
+    <li>Use Google Chrome ou Microsoft Edge neste computador.</li>
+    <li>Na balança, confira o protocolo <b>C14 = Prt3</b> (ou Prt1) e anote a velocidade configurada.</li>
+    <li>Cabo USB direto ou conversor serial-USB: o Windows precisa mostrar a balança como “Porta COM” no Gerenciador de Dispositivos. Se não aparecer, instale o driver do conversor.</li>
+    <li>Teste outra velocidade na lista acima.</li>
+    <li>Copie o conteúdo da caixa “Respostas da balança” e envie para o suporte.</li>
+  </ol>
+</div>
+</main>
+<script>
+const STX=2,ETX=3,ENQ=5; let port=null,timer=null;
+const $=id=>document.getElementById(id); const log=t=>{$('log').textContent=(new Date().toLocaleTimeString()+'  '+t+'\n'+$('log').textContent).slice(0,4000)};
+const hex=b=>[...b].map(x=>x<32?`<${x.toString(16).padStart(2,'0')}>`:String.fromCharCode(x)).join('');
+if(!('serial' in navigator)){$('aviso').innerHTML='<b>Este navegador não acessa a balança.</b> Abra este arquivo no Google Chrome ou Microsoft Edge do computador do balcão.';$('con').disabled=true}
+else $('aviso').innerHTML='<span class="muted">Ligue a balança no cabo, clique em <b>Conectar balança</b> e escolha a porta (ex.: “USB Serial” ou “COM3”). Depois coloque um copo na balança e clique em <b>Ler peso</b>.</span>';
+function parse(p){p=p.replace(/[\x02\x03\r\n]/g,'').trim();
+  if(/^I+$/.test(p))return{s:'Peso instável — aguarde'};if(/^N+$/.test(p))return{s:'Peso negativo — zere a balança'};if(/^S+$/.test(p))return{s:'Sobrecarga'};
+  if(/^\d{5}$/.test(p))return{s:'Peso estável',g:+p};const m=p.match(/^-?\d{1,3}[.,]\d{3}$/);if(m)return{s:'Peso estável',g:Math.round(parseFloat(p.replace(',','.'))*1000)};return{s:'Resposta não reconhecida: '+p}}
+$('con').onclick=async()=>{try{
+  if(port){clearInterval(timer);await port.close();port=null;$('con').textContent='Conectar balança';$('ler').disabled=$('auto').disabled=true;$('st').textContent='Desconectada';return}
+  port=await navigator.serial.requestPort();await port.open({baudRate:+$('baud').value,dataBits:8,stopBits:1,parity:'none'});
+  $('con').textContent='Desconectar';$('ler').disabled=$('auto').disabled=false;$('st').textContent='Conectada a '+$('baud').value+' bauds';log('Conectado');
+}catch(e){log('Erro: '+e.message);port=null}};
+async function ler(){ if(!port)return;
+  const w=port.writable.getWriter();await w.write(new Uint8Array([ENQ]));w.releaseLock();
+  const r=port.readable.getReader();let buf=[];const t=setTimeout(()=>r.cancel().catch(()=>{}),800);
+  try{for(;;){const{value,done}=await r.read();if(done)break;buf.push(...value);const e=buf.lastIndexOf(ETX)>=0?buf.lastIndexOf(ETX):buf.lastIndexOf(13);
+    if(e>=0){const s=buf.lastIndexOf(STX,e);if(s>=0){const fr=new TextDecoder().decode(new Uint8Array(buf.slice(s+1,e)));log('Recebido: '+hex(buf));show(parse(fr));return}}}}
+  finally{clearTimeout(t);r.releaseLock()}
+  log(buf.length?'Recebido sem quadro completo: '+hex(buf):'Sem resposta — confira protocolo e velocidade');$('st').textContent='Sem resposta da balança';
+}
+function show(r){$('st').textContent=r.s;if(r.g!=null){$('peso').textContent=(r.g/1000).toFixed(3).replace('.',',')+' kg';
+  const liq=Math.max(0,r.g-(+$('tara').value||0));const v=Math.round(liq/1000*(+$('kg').value||0)*100)/100;$('valor').textContent=v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}}
+$('ler').onclick=()=>ler().catch(e=>log('Erro: '+e.message));
+$('auto').onchange=e=>{clearInterval(timer);if(e.target.checked)timer=setInterval(()=>ler().catch(()=>{}),700)};
+</script>
+</body></html>
