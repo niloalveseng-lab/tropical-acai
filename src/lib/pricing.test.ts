@@ -5,7 +5,7 @@ const hojeTer = { diaSemana: 2, hora: 15, data: "2026-10-06" }; // terça
 const hojeSeg = { diaSemana: 1, hora: 15, data: "2026-10-05" }; // segunda
 
 const c: Catalog = {
-  settings: { acomp_extra: null, preco_kg: 49.99 },
+  settings: { acomp_extra: 2, preco_kg: 49.99 },
   bases: [{ id: "tradicional", nome: "Tradicional", ativo: true }, { id: "zero", nome: "Zero", ativo: true }],
   sizes: [
     { id: "c300", embalagem: "Copo", rotulo: "300 ml", preco: 14.9, acomp_inclusos: 3, ativo: true },
@@ -13,11 +13,12 @@ const c: Catalog = {
   ],
   addons: [
     { id: "banana", group_id: "frutas", nome: "Banana", preco_adicional: 0, conta_no_limite: true, ativo: true, esgotado_em: null },
-    { id: "morango", group_id: "frutas", nome: "Morango", preco_adicional: 3, conta_no_limite: true, ativo: true, esgotado_em: null },
+    { id: "morango", group_id: "frutas", nome: "Morango", preco_adicional: 3, conta_no_limite: false, ativo: true, esgotado_em: null },
     { id: "granola", group_id: "compl", nome: "Granola", preco_adicional: 0, conta_no_limite: true, ativo: true, esgotado_em: null },
     { id: "pacoca", group_id: "compl", nome: "Leite em Pó", preco_adicional: 0, conta_no_limite: true, ativo: true, esgotado_em: "2026-10-06" },
     { id: "lc", group_id: "cob", nome: "Leite Condensado", preco_adicional: 0, conta_no_limite: true, ativo: true, esgotado_em: null },
-    { id: "ovo", group_id: "esp", nome: "Creme de Ovomaltine", preco_adicional: 3, conta_no_limite: true, ativo: true, esgotado_em: null },
+    { id: "amend", group_id: "compl", nome: "Amendoim", preco_adicional: 0, conta_no_limite: true, ativo: true, esgotado_em: null },
+    { id: "ovo", group_id: "esp", nome: "Creme de Ovomaltine", preco_adicional: 3, conta_no_limite: false, ativo: true, esgotado_em: null },
   ],
   products: [
     { id: "shake", nome: "Milkshake", kind: "opcoes", preco: null, tamanhos: [{ nome: "P 300 ml", preco: 15 }, { nome: "G 500 ml", preco: 20 }], sabores: ["Chocolate", "Morango"], escolha: null, ativo: true, esgotado_em: null },
@@ -35,13 +36,21 @@ describe("açaí montado", () => {
     expect(r.total).toBe(35.8);
     expect(r.descricao).toContain("Base Zero");
   });
-  it("bloqueia acima do limite quando não há valor de extra", () => {
-    expect(() => priceItem(c, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["banana", "morango", "lc", "granola"], qtd: 1 }, hojeTer)).toThrow(/Máximo de 3/);
+  it("pagos não ocupam vaga dos inclusos (3 inclusos + morango + ovomaltine)", () => {
+    const r = priceItem(c, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["banana", "lc", "granola", "morango", "ovo"], qtd: 1 }, hojeTer);
+    expect(r.precoUnitario).toBe(20.9); // 14,90 + 3 + 3
   });
-  it("cobra extra quando configurado", () => {
-    const c2 = { ...c, settings: { ...c.settings, acomp_extra: 2 } };
-    const r = priceItem(c2, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["banana", "morango", "lc", "granola", "ovo"], qtd: 1 }, hojeTer);
-    expect(r.precoUnitario).toBe(14.9 + 3 + 3 + 2 * 2);
+  it("gratuito acima do limite cobra R$ 2,00 cada", () => {
+    const r = priceItem(c, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["banana", "lc", "granola", "amend", "morango"], qtd: 1 }, hojeTer);
+    expect(r.precoUnitario).toBe(19.9); // 14,90 + 1 extra × 2 + morango 3
+    expect(r.detalhes.extras).toBe(1);
+  });
+  it("sem valor de extra configurado, bloqueia acima do limite", () => {
+    const c2 = { ...c, settings: { ...c.settings, acomp_extra: null } };
+    expect(() => priceItem(c2, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["banana", "lc", "granola", "amend"], qtd: 1 }, hojeTer)).toThrow(/Máximo de 3/);
+  });
+  it("não aceita o mesmo item duas vezes", () => {
+    expect(() => priceItem(c, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["morango", "morango"], qtd: 1 }, hojeTer)).toThrow(/repetido/);
   });
   it("recusa item esgotado hoje", () => {
     expect(() => priceItem(c, { tipo: "acai", sizeId: "c300", baseId: "zero", addonIds: ["pacoca"], qtd: 1 }, hojeTer)).toThrow(/esgotado/);

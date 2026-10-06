@@ -48,12 +48,15 @@ export function priceItem(c: Catalog, item: CartItem, agora = agoraSousa()): Pri
     if (!size) throw new PricingError("Tamanho indisponível");
     const base = c.bases.find((b) => b.id === item.baseId && b.ativo);
     if (!base) throw new PricingError("Base indisponível");
+    if (new Set(item.addonIds).size !== item.addonIds.length) throw new PricingError("Acompanhamento repetido");
     const addons = item.addonIds.map((id) => {
       const a = c.addons.find((x) => x.id === id && x.ativo);
       if (!a) throw new PricingError("Acompanhamento indisponível");
       if (esgotadoHoje(a, agora.data)) throw new PricingError(`${a.nome} esgotado hoje`);
       return a;
     });
+    // Pagos (morango, kiwi, cereja, cremes especiais) não ocupam vaga dos inclusos: cobram o próprio adicional.
+    // Gratuitos acima do limite: R$ acomp_extra cada (R$ 2,00).
     const contados = addons.filter((a) => a.conta_no_limite).length;
     const extras = Math.max(0, contados - size.acomp_inclusos);
     if (extras > 0 && c.settings.acomp_extra == null) throw new PricingError(`Máximo de ${size.acomp_inclusos} acompanhamentos neste tamanho`);

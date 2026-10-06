@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { lastFrame, parseFrame, precoPorPeso, STX, ETX } from "./toledo";
 
-const frame = (s: string) => new Uint8Array([STX, ...new TextEncoder().encode(s), ETX]);
+const frame = (s: string) => new Uint8Array([STX, ...Array.from(new TextEncoder().encode(s)), ETX]);
 
 describe("Toledo Prix 3 Fit — protocolo", () => {
   it("lê peso estável em gramas (Prt3)", () => {
@@ -21,7 +21,7 @@ describe("Toledo Prix 3 Fit — protocolo", () => {
   });
   it("extrai o último quadro de um buffer com lixo e quadros parciais", () => {
     const a = frame("IIIII"), b = frame("00500");
-    const buf = new Uint8Array([0x31, ...a, ...b, STX, 0x30]);
+    const buf = new Uint8Array([0x31, ...Array.from(a), ...Array.from(b), STX, 0x30]);
     expect(lastFrame(buf)).toBe("00500");
     expect(lastFrame(new Uint8Array([STX, 0x30, 0x31]))).toBeNull();
   });

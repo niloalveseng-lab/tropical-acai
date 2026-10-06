@@ -35,9 +35,12 @@ create table settings (
   -- horário por dia da semana (0=dom..6=sáb); null = fechado
   horarios jsonb not null default '{"0":[14,21],"1":null,"2":[14,21],"3":[14,21],"4":[14,21],"5":[14,22],"6":[14,22]}',
   preco_kg numeric(10,2) not null default 49.99,
-  acomp_extra numeric(10,2),            -- null = bloqueia acima do limite
-  taxa_entrega numeric(10,2),           -- null = combinar
-  pedido_minimo numeric(10,2) not null default 0,
+  acomp_extra numeric(10,2) default 2.00, -- cada acompanhamento incluso acima do limite (null = bloqueia)
+  -- Entrega por raio (linha reta a partir da loja). Acima do último raio: não entrega.
+  loja_lat double precision not null default -6.7589,   -- PROVISÓRIO: confirmar pino da loja no admin
+  loja_lng double precision not null default -38.2311,
+  faixas_entrega jsonb not null default '[{"ate_km":1,"taxa":5},{"ate_km":2,"taxa":7},{"ate_km":3,"taxa":8},{"ate_km":4,"taxa":10}]',
+  pedido_minimo numeric(10,2) not null default 20.00,   -- só para entrega
   aceita_agendamento boolean not null default true,
   balanca jsonb not null default '{"protocolo":"prt3","baud":9600}',
   updated_at timestamptz not null default now()
@@ -83,6 +86,8 @@ create table addon_items (
   group_id text not null references addon_groups(id) on delete cascade,
   nome text not null,
   preco_adicional numeric(10,2) not null default 0 check (preco_adicional >= 0),
+  -- true: gratuito, conta nos acompanhamentos inclusos (acima do limite cobra settings.acomp_extra)
+  -- false: pago à parte (preco_adicional), não ocupa vaga dos inclusos
   conta_no_limite boolean not null default true,
   ordem int not null default 0,
   ativo boolean not null default true,
@@ -106,6 +111,7 @@ create table products (
   estoque int,
   estoque_minimo int,
   ordem int not null default 0,
+  destaque boolean not null default false, -- aparece em "Mais vendidos" enquanto ainda não há vendas suficientes
   ativo boolean not null default true,
   esgotado_em date
 );
@@ -178,6 +184,7 @@ create table orders (
   cliente_nome text, cliente_telefone text,
   tipo text not null check (tipo in ('retirada','entrega','balcao')),
   endereco text, bairro text,
+  entrega_lat double precision, entrega_lng double precision, distancia_km numeric(6,2),
   subtotal numeric(10,2) not null, taxa_entrega numeric(10,2) not null default 0,
   desconto numeric(10,2) not null default 0, total numeric(10,2) not null,
   forma_pagamento text not null,         -- pix_online, cartao_online, dinheiro, pix, debito, credito, misto
@@ -301,3 +308,15 @@ create policy "imagens publicas" on storage.objects for select using (bucket_id 
 create policy "gerente envia imagens" on storage.objects for insert with check (bucket_id = 'cardapio' and is_staff('gerente'));
 create policy "gerente troca imagens" on storage.objects for update using (bucket_id = 'cardapio' and is_staff('gerente'));
 create policy "gerente apaga imagens" on storage.objects for delete using (bucket_id = 'cardapio' and is_staff('gerente'));
+
+-- Mais vendidos (somente nomes e quantidades, sem dados de clientes) — usado na vitrine do site
+create or replace function mais_vendidos(dias int default 30, limite int default 6)
+returns table(nome text, quantidade bigint) language sql stable security definer set search_path = public as $$
+  select i.nome, sum(i.quantidade)::bigint
+  from order_items i join orders o on o.id = i.order_id
+  where o.status not in ('cancelado','aguardando_pagamento')
+    and o.created_at >= now() - make_interval(days => dias)
+    and i.nome <> 'Açaí no quilo'
+  group by i.nome order by 2 desc limit limite;
+$$;
+grant execute on function mais_vendidos(int,int) to anon, authenticated;

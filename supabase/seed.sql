@@ -11,9 +11,9 @@ insert into acai_sizes(id,embalagem,rotulo,preco,acomp_inclusos,ordem) values ('
 insert into acai_sizes(id,embalagem,rotulo,preco,acomp_inclusos,ordem) values ('p1l','Pote','1 litro',38.9,7,6);
 insert into addon_groups(id,nome,ordem) values ('frutas','Frutas',0);
 insert into addon_items(group_id,nome,preco_adicional,ordem) values ('frutas','Banana',0,0);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('frutas','Morango',3,1);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('frutas','Kiwi',3,2);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('frutas','Cereja',3,3);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('frutas','Morango',3,false,1);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('frutas','Kiwi',3,false,2);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('frutas','Cereja',3,false,3);
 insert into addon_groups(id,nome,ordem) values ('cremes','Cremes',1);
 insert into addon_items(group_id,nome,preco_adicional,ordem) values ('cremes','Pistache',0,0);
 insert into addon_items(group_id,nome,preco_adicional,ordem) values ('cremes','Ninho Trufado',0,1);
@@ -46,10 +46,10 @@ insert into addon_items(group_id,nome,preco_adicional,ordem) values ('cob','Mora
 insert into addon_items(group_id,nome,preco_adicional,ordem) values ('cob','Uva',0,3);
 insert into addon_items(group_id,nome,preco_adicional,ordem) values ('cob','Caramelo',0,4);
 insert into addon_groups(id,nome,ordem) values ('esp','Cremes especiais',5);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('esp','Creme de Ovomaltine',3,0);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('esp','Creme de Ninho',3,1);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('esp','Creme de Avelã',3,2);
-insert into addon_items(group_id,nome,preco_adicional,ordem) values ('esp','Creme de Buenissimo',3,3);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('esp','Creme de Ovomaltine',3,false,0);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('esp','Creme de Ninho',3,false,1);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('esp','Creme de Avelã',3,false,2);
+insert into addon_items(group_id,nome,preco_adicional,conta_no_limite,ordem) values ('esp','Creme de Buenissimo',3,false,3);
 insert into promos(id,nome,tamanho,preco,composicao,dias_semana) values ('copo-promocional','Copo Promocional','300 ml',10,array['Açaí','Amendoim','Leite em Pó','Leite Condensado','M&M''s'],array[2,3,4,5]);
 insert into products(id,category_id,nome,descricao,kind,tamanhos,sabores,escolha,ordem) values ('batida','batida','Batida de Açaí','No copo ou na garrafa','opcoes','[{"nome": "300 ml", "preco": 13, "sabores": 1}, {"nome": "500 ml", "preco": 18, "sabores": 1}]'::jsonb,null,'{"rotulo": "Servir em", "opcoes": ["Copo", "Garrafa"]}'::jsonb,0);
 insert into products(id,category_id,nome,descricao,kind,tamanhos,sabores,escolha,ordem) values ('shake','milkshake','Milkshake','8 sabores · P, M ou G','opcoes','[{"nome": "P 300 ml", "preco": 15, "sabores": 1}, {"nome": "M 400 ml", "preco": 18, "sabores": 1}, {"nome": "G 500 ml", "preco": 20, "sabores": 1}]'::jsonb,array['Ovomaltine','Chocolate','Morango','Doce de Leite','Céu Azul','Ouro Branco','Ninho Trufado','Flocos'],null::jsonb,1);
