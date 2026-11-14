@@ -1,0 +1,81 @@
+import { randomBytes } from "node:crypto";
+import { createClient as createAdmin } from "@supabase/supabase-js";
+import type { PedidoMontado } from "./montar";
+
+export type StatusPedido = "novo" | "preparo" | "pronto" | "saiu" | "entregue" | "cancelado";
+/** O que a página pública de acompanhamento pode ver (sem telefone nem endereço completo). */
+export type PedidoPublico = {
+  codigo: string; numero: number; status: StatusPedido; tipo: "retirada" | "entrega";
+  primeiroNome: string; criadoEm: string; agendado: boolean;
+  itens: { nome: string; descricao: string; qtd: number; total: number }[];
+  subtotal: number; taxaEntrega: number; total: number; pagamento: string;
+};
+
+/** Código do link: 12 caracteres sem letras ambíguas (≈ 60 bits), impossível de adivinhar. */
+export function novoCodigo() {
+  const abc = "abcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from(randomBytes(12), (b) => abc[b % abc.length]).join("");
+}
+
+const publico = (codigo: string, numero: number, status: StatusPedido, criadoEm: string, p: PedidoMontado): PedidoPublico => ({
+  codigo, numero, status, tipo: p.tipo, primeiroNome: p.nome.split(" ")[0], criadoEm, agendado: p.agendado,
+  itens: p.linhas.map((l) => ({ nome: l.nome, descricao: l.descricao, qtd: l.qtd, total: l.total })),
+  subtotal: p.subtotal, taxaEntrega: p.taxaEntrega, total: p.total, pagamento: p.pagamento,
+});
+
+export interface PedidosRepo {
+  criar(p: PedidoMontado): Promise<PedidoPublico>;
+  buscar(codigo: string): Promise<PedidoPublico | null>;
+}
+
+/* ---------- Demonstração: guarda na memória do servidor (some ao reiniciar) ---------- */
+const g = globalThis as unknown as { __pedidosDemo?: { seq: number; mapa: Map<string, PedidoPublico> } };
+const demo = (g.__pedidosDemo ??= { seq: 100, mapa: new Map() });
+
+const repoDemo: PedidosRepo = {
+  async criar(p) {
+    const ped = publico(novoCodigo(), ++demo.seq, "novo", new Date().toISOString(), p);
+    demo.mapa.set(ped.codigo, ped);
+    return ped;
+  },
+  async buscar(codigo) { return demo.mapa.get(codigo) ?? null; },
+};
+
+/* ---------- Supabase (produção): grava com a chave de serviço, só no servidor ---------- */
+function repoSupabase(): PedidosRepo {
+  const sb = createAdmin(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+  return {
+    async criar(p) {
+      const codigo = novoCodigo();
+      const { data: o, error } = await sb.from("orders").insert({
+        codigo, canal: "site", status: "novo", tipo: p.tipo,
+        cliente_nome: p.nome, cliente_telefone: p.whatsapp,
+        endereco: p.endereco, bairro: p.referencia,
+        entrega_lat: p.destino?.lat ?? null, entrega_lng: p.destino?.lng ?? null, distancia_km: p.distanciaKm,
+        subtotal: p.subtotal, taxa_entrega: p.taxaEntrega, total: p.total,
+        forma_pagamento: p.pagamento, pago: false, troco_para: p.trocoPara,
+        observacao: p.agendado ? "Pedido feito com a loja fechada (agendado para a abertura)" : null,
+      }).select("id,numero,created_at").single();
+      if (error || !o) throw new Error("Falha ao gravar o pedido: " + error?.message);
+      const { error: e2 } = await sb.from("order_items").insert(p.linhas.map((l) => ({
+        order_id: o.id, nome: l.nome, descricao: l.descricao, detalhes: l.detalhes, quantidade: l.qtd, preco_unitario: l.precoUnitario, total: l.total,
+      })));
+      if (e2) { await sb.from("orders").delete().eq("id", o.id); throw new Error("Falha ao gravar os itens: " + e2.message); }
+      return publico(codigo, o.numero, "novo", o.created_at, p);
+    },
+    async buscar(codigo) {
+      const { data: o } = await sb.from("orders").select("codigo,numero,status,tipo,cliente_nome,created_at,observacao,subtotal,taxa_entrega,total,forma_pagamento,order_items(nome,descricao,quantidade,total)").eq("codigo", codigo).maybeSingle();
+      if (!o) return null;
+      return {
+        codigo: o.codigo, numero: o.numero, status: o.status === "aguardando_pagamento" ? "novo" : o.status, tipo: o.tipo,
+        primeiroNome: (o.cliente_nome ?? "").split(" ")[0], criadoEm: o.created_at, agendado: /agendado/.test(o.observacao ?? ""),
+        itens: (o.order_items ?? []).map((i: { nome: string; descricao: string | null; quantidade: number; total: number }) => ({ nome: i.nome, descricao: i.descricao ?? "", qtd: i.quantidade, total: Number(i.total) })),
+        subtotal: Number(o.subtotal), taxaEntrega: Number(o.taxa_entrega), total: Number(o.total), pagamento: o.forma_pagamento,
+      };
+    },
+  };
+}
+
+export function pedidosRepo(): PedidosRepo {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY ? repoSupabase() : repoDemo;
+}

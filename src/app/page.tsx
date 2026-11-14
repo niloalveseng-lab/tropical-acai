@@ -1,31 +1,20 @@
-import Image from "next/image";
 import { MapaLoja } from "@/components/MapaLoja";
 import { MaisVendidos } from "@/components/MaisVendidos";
 import { WhatsAppFlutuante } from "@/components/WhatsAppFlutuante";
-import { getInfoLoja, getMaisVendidos } from "@/lib/loja";
+import { Loja } from "@/components/loja/Loja";
+import { getCardapio } from "@/lib/cardapio";
+import { getMaisVendidos } from "@/lib/loja";
 
-export const revalidate = 300; // atualiza "mais pedidos" a cada 5 minutos
+export const revalidate = 60; // preços e "esgotado hoje" chegam ao site em até 1 minuto
 
 export default async function Home() {
-  const [loja, top] = await Promise.all([getInfoLoja(), getMaisVendidos()]);
+  const [cardapio, top] = await Promise.all([getCardapio(), getMaisVendidos()]);
   return (
-    <main className="pb-24">
-      <header className="bg-roxo text-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-4">
-          <Image src="/img/logo.png" alt="Tropical Açaí" width={140} height={58} priority />
-        </div>
-      </header>
-
-      <section className="mx-auto max-w-5xl px-4 pt-8">
-        <h1 className="text-3xl font-extrabold leading-tight">
-          Monte o seu <span className="font-script font-normal text-lima-tinta">açaí</span> e receba em casa
-        </h1>
-        <p className="mt-2 text-roxo/80">Cardápio online em construção — fase 2.</p>
-      </section>
-
-      <MaisVendidos itens={top} />
-      <MapaLoja lat={loja.lat} lng={loja.lng} endereco={loja.endereco} />
-      <WhatsAppFlutuante numero={loja.whatsapp} />
-    </main>
+    <>
+      {cardapio.demo && <p className="bg-lima px-4 py-1.5 text-center text-xs font-bold text-roxo-escuro">Modo demonstração: pedidos não chegam à loja até o banco de dados ser ligado.</p>}
+      <Loja cardapio={cardapio}><MaisVendidos itens={top} /></Loja>
+      <MapaLoja lat={cardapio.loja.lat} lng={cardapio.loja.lng} endereco={cardapio.loja.endereco} />
+      <WhatsAppFlutuante numero={cardapio.loja.whatsapp} />
+    </>
   );
 }
