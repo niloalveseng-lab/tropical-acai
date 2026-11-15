@@ -65,3 +65,6 @@ insert into products(id,category_id,nome,kind,preco,controla_estoque,ordem) valu
 insert into products(id,category_id,nome,kind,preco,controla_estoque,ordem) values ('pic8','picole','Picolé Oreo','simples',6,true,11);
 insert into products(id,category_id,nome,kind,preco,controla_estoque,ordem) values ('pic9','picole','Picolé Paçoca','simples',6,true,12);
 commit;
+
+-- Fotos que já vêm com o site (as demais são enviadas pelo painel).
+update products p set imagem_path = v.img from (values ('batida','/img/batida.jpg'),('shake','/img/milkshake.jpg'),('cascao','/img/cascao.jpg'),('pic1','/img/pic_acai.jpg'),('pic3','/img/pic_brownie.jpg'),('pic4','/img/pic_coco.jpg')) v(id,img) where p.id = v.id and p.imagem_path is null;

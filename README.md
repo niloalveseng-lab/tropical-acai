@@ -27,6 +27,10 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 - `supabase/migrations/0005_caixa.sql` — um caixa aberto por vez, `resumo_caixa()`, equipe não apaga registros de caixa.
 - Falta: modo sem internet, impressora térmica direta (hoje imprime pela janela do navegador), relatórios.
 
+**Fase 5 — painel (`/balcao/painel`)**
+- Esgotado hoje (toda a equipe), cardápio e preços com fotos, loja/entrega/horários e relatórios de vendas (gerente e dono).
+- `supabase/migrations/0006_painel.sql` — `marcar_esgotado()` e `relatorio_vendas()`.
+
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
 Gravação de pedidos no Supabase testada em produção (Vercel).
 

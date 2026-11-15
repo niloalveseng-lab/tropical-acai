@@ -83,6 +83,7 @@ export default function Caixa({ cardapio: c }: { cardapio: Cardapio }) {
               <button onClick={() => setModal("sangria")} className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Sangria</button>
               <button onClick={() => setModal("fechar")} className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Fechar caixa</button>
             </>}
+            <Link href="/balcao/painel" className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Painel</Link>
             <Link href="/balcao" className="rounded-full bg-lima px-3 py-1.5 font-extrabold text-roxo-escuro">Pedidos</Link>
           </div>
         </div>
