@@ -33,5 +33,5 @@ Marque cada item quando concluir e me envie as informações pedidas no fim.
 - [x] Acompanhamento incluso extra: R$ 2,00 cada. Itens pagos (morango, kiwi, cereja, cremes especiais) não ocupam vaga dos inclusos.
 - [x] Entrega por raio: até 1 km R$ 5 · 1–2 km R$ 7 · 2–3 km R$ 8 · 3–4 km R$ 10 · acima de 4 km não entrega.
 - [x] Pedido mínimo para entrega: R$ 20,00 (sem contar a taxa).
-- [ ] **Localização exata da loja:** abra o Google Maps, toque e segure em cima da loja e me envie as coordenadas (ex.: -6.75xxx, -38.23xxx). Toda a taxa de entrega depende desse ponto.
+- [x] Localização da loja: -6.7490513, -38.24237 (pino do Google Maps). Pode ser ajustada no painel.
 - [ ] Fotos dos picolés sem foto (Abacaxi, Brigadeiro Belga, Doce de Leite, Morango Trufado, Ninho, Oreo, Paçoca).

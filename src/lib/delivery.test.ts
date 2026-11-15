@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checarPedidoMinimo, cotarEntrega, distanciaKm } from "./delivery";
 
-const loja = { lat: -6.7589, lng: -38.2311 };
+const loja = { lat: -6.7490513, lng: -38.24237 };
 const faixas = [{ ate_km: 1, taxa: 5 }, { ate_km: 2, taxa: 7 }, { ate_km: 3, taxa: 8 }, { ate_km: 4, taxa: 10 }];
 // 0,009 grau de latitude ≈ 1 km
 const aKm = (km: number) => ({ lat: loja.lat - 0.008993 * km, lng: loja.lng });

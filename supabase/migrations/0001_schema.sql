@@ -37,8 +37,8 @@ create table settings (
   preco_kg numeric(10,2) not null default 49.99,
   acomp_extra numeric(10,2) default 2.00, -- cada acompanhamento incluso acima do limite (null = bloqueia)
   -- Entrega por raio (linha reta a partir da loja). Acima do último raio: não entrega.
-  loja_lat double precision not null default -6.7589,   -- PROVISÓRIO: confirmar pino da loja no admin
-  loja_lng double precision not null default -38.2311,
+  loja_lat double precision not null default -6.7490513, -- pino do Google Maps da loja
+  loja_lng double precision not null default -38.24237,
   faixas_entrega jsonb not null default '[{"ate_km":1,"taxa":5},{"ate_km":2,"taxa":7},{"ate_km":3,"taxa":8},{"ate_km":4,"taxa":10}]',
   pedido_minimo numeric(10,2) not null default 20.00,   -- só para entrega
   aceita_agendamento boolean not null default true,

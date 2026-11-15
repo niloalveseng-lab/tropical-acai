@@ -6,7 +6,7 @@ export type InfoLoja = { whatsapp: string; endereco: string; lat: number; lng: n
 export const LOJA_PADRAO: InfoLoja = {
   whatsapp: "5583993526981",
   endereco: "Av. Monsenhor Vicente Freitas, 445 – Sousa-PB",
-  lat: -6.7589, lng: -38.2311, // provisório até confirmar o pino no admin
+  lat: -6.7490513, lng: -38.24237, // provisório até confirmar o pino no admin
 };
 
 export async function getInfoLoja(): Promise<InfoLoja> {

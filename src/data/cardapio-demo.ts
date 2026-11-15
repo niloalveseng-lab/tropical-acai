@@ -711,8 +711,8 @@ export const CARDAPIO_DEMO: Cardapio = {
  "loja": {
   "whatsapp": "5583993526981",
   "endereco": "Av. Monsenhor Vicente Freitas, 445 – Sousa-PB",
-  "lat": -6.7589,
-  "lng": -38.2311,
+  "lat": -6.7490513,
+  "lng": -38.24237,
   "horarios": {
    "0": [
     14,
