@@ -21,6 +21,12 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 - `/balcao/equipe` + `/api/equipe` — só o dono: cadastra gerente/atendente com senha inicial, muda função, redefine senha, remove acesso.
 - `supabase/migrations/0003_equipe.sql` — o e-mail do dono vira “dono” automaticamente; atendente só altera status/pago/motivo dos pedidos.
 
+**Fase 4a — caixa (PDV)**
+- `/balcao/caixa` — abrir caixa, venda rápida (açaí, quilo, promoção, produtos), receber em dinheiro com troco, PIX, débito, crédito ou dividido, sangria, reforço e fechamento com conferência da gaveta.
+- `src/lib/caixa/venda.ts` + `/api/caixa/venda` — preço refeito no servidor; grava pedido (canal balcão), itens e pagamentos no caixa aberto.
+- `supabase/migrations/0005_caixa.sql` — um caixa aberto por vez, `resumo_caixa()`, equipe não apaga registros de caixa.
+- Falta: modo sem internet, impressora térmica direta (hoje imprime pela janela do navegador), relatórios.
+
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
 Gravação de pedidos no Supabase testada em produção (Vercel).
 

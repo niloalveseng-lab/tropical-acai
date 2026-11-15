@@ -40,3 +40,13 @@ export async function acharUsuarioPorEmail(sb: ReturnType<typeof admin>, email: 
   }
   return null;
 }
+
+/** Confere pela sessão se quem chamou é da equipe ativa (qualquer função). Devolve o id. */
+export async function exigirEquipe() {
+  const sb = createClient();
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) throw new AcessoNegado("Faça login novamente.");
+  const { data: funcao } = await sb.rpc("minha_funcao");
+  if (!funcao) throw new AcessoNegado("Seu usuário não faz parte da equipe.");
+  return user.id;
+}

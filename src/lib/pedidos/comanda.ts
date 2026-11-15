@@ -9,7 +9,7 @@ export type PedidoBalcao = {
   order_items: ItemBalcao[];
 };
 
-export const PAGAMENTO: Record<string, string> = { pix: "PIX", cartao: "Cartão", dinheiro: "Dinheiro", pix_online: "PIX online", cartao_online: "Cartão online", debito: "Débito", credito: "Crédito" };
+export const PAGAMENTO: Record<string, string> = { pix: "PIX", cartao: "Cartão", dinheiro: "Dinheiro", pix_online: "PIX online", cartao_online: "Cartão online", debito: "Débito", credito: "Crédito", misto: "Misto" };
 export const brl = (v: number) => Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Fortaleza" });
 
@@ -61,4 +61,15 @@ export function textoComanda(p: PedidoBalcao) {
   if (p.troco_para) l.push(`Troco para ${brl(p.troco_para)} → levar ${brl(Number(p.troco_para) - Number(p.total))}`);
   if (p.observacao) l.push("", p.observacao);
   return l.join("\n");
+}
+
+export const CAMPOS = "id,numero,codigo,canal,status,tipo,cliente_nome,cliente_telefone,endereco,bairro,entrega_lat,entrega_lng,distancia_km,subtotal,taxa_entrega,total,forma_pagamento,pago,troco_para,observacao,motivo_cancelamento,created_at,updated_at,order_items(nome,descricao,quantidade,total,detalhes)";
+
+/** Abre a comanda em uma janela pronta para a impressora térmica de 80 mm. */
+export function imprimir(p: PedidoBalcao) {
+  const w = window.open("", "_blank", "width=380,height=640");
+  if (!w) return;
+  const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
+  w.document.write(`<html><head><title>Pedido #${p.numero}</title><style>@page{size:80mm auto;margin:3mm}body{font:13px/1.35 monospace;white-space:pre-wrap;margin:0}</style></head><body>${esc(textoComanda(p))}</body></html>`);
+  w.document.close(); w.focus(); w.print();
 }

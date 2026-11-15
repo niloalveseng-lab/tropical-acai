@@ -6,9 +6,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { emAberto, proximo, ROTULO, type Status } from "@/lib/pedidos/status";
-import { brl, hora, linkMapa, linkWhatsApp, PAGAMENTO, textoComanda, type PedidoBalcao } from "@/lib/pedidos/comanda";
+import { brl, CAMPOS, hora, imprimir, linkMapa, linkWhatsApp, PAGAMENTO, type PedidoBalcao } from "@/lib/pedidos/comanda";
 
-const CAMPOS = "id,numero,codigo,canal,status,tipo,cliente_nome,cliente_telefone,endereco,bairro,entrega_lat,entrega_lng,distancia_km,subtotal,taxa_entrega,total,forma_pagamento,pago,troco_para,observacao,motivo_cancelamento,created_at,updated_at,order_items(nome,descricao,quantidade,total,detalhes)";
 
 /** 00:00 de hoje em Sousa-PB (UTC−3), em ISO. */
 function inicioDoDia() {
@@ -137,6 +136,7 @@ export default function Balcao() {
             <span className={`h-2 w-2 rounded-full ${conexao === "ok" ? "animate-pulse bg-roxo-escuro" : "bg-amber-800"}`} />{conexao === "ok" ? "Ao vivo" : "Reconectando"}
           </span>
           <div className="ml-auto flex items-center gap-2 text-sm">
+            <Link href="/balcao/caixa" className="rounded-full bg-lima px-3 py-1.5 font-extrabold text-roxo-escuro">Caixa</Link>
             {eu.funcao === "dono" && <Link href="/balcao/equipe" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Equipe</Link>}
             <button onClick={sair} className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Sair</button>
           </div>
@@ -179,13 +179,6 @@ function Resumo({ rotulo, valor, destaque }: { rotulo: string; valor: string; de
   return <div className={`rounded-2xl p-3 ${destaque ? "animate-pulse bg-amber-400 text-amber-950" : "bg-white text-roxo"}`}><div className="text-xl font-extrabold">{valor}</div><div className="text-xs font-bold opacity-70">{rotulo}</div></div>;
 }
 
-function imprimir(p: PedidoBalcao) {
-  const w = window.open("", "_blank", "width=380,height=640");
-  if (!w) return;
-  const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
-  w.document.write(`<html><head><title>Pedido #${p.numero}</title><style>@page{size:80mm auto;margin:3mm}body{font:13px/1.35 monospace;white-space:pre-wrap;margin:0}</style></head><body>${esc(textoComanda(p))}</body></html>`);
-  w.document.close(); w.focus(); w.print();
-}
 
 function Cartao({ p, onAtualizar }: { p: PedidoBalcao; onAtualizar: (p: PedidoBalcao, c: Partial<Pick<PedidoBalcao, "status" | "pago" | "motivo_cancelamento">>) => void }) {
   const [cancelando, setCancelando] = useState(false);
@@ -200,7 +193,7 @@ function Cartao({ p, onAtualizar }: { p: PedidoBalcao; onAtualizar: (p: PedidoBa
       <div className="flex items-start gap-2">
         <div>
           <div className="text-2xl font-extrabold text-roxo">#{p.numero}</div>
-          <div className="text-xs font-semibold text-roxo/60">{hora(p.created_at)}{emAberto(p.status) && ` · há ${minutos < 60 ? minutos + " min" : Math.floor(minutos / 60) + " h"}`} · {p.canal === "site" ? "Site" : p.canal}</div>
+          <div className="text-xs font-semibold text-roxo/60">{hora(p.created_at)}{emAberto(p.status) && ` · há ${minutos < 60 ? minutos + " min" : Math.floor(minutos / 60) + " h"}`} · {p.canal === "site" ? "Site" : p.canal === "balcao" ? "Balcão" : p.canal}</div>
         </div>
         <div className="ml-auto flex flex-col items-end gap-1">
           <span className={`rounded-full px-2.5 py-1 text-xs font-extrabold ${COR[p.status]}`}>{ROTULO[p.status]}</span>
