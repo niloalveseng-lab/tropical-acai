@@ -31,6 +31,12 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 - Esgotado hoje (toda a equipe), cardápio e preços com fotos, loja/entrega/horários e relatórios de vendas (gerente e dono).
 - `supabase/migrations/0006_painel.sql` — `marcar_esgotado()` e `relatorio_vendas()`.
 
+**Fase 3 — pagamento online (Mercado Pago)**
+- `src/lib/pagamento/` — PIX (QR Code na página do pedido) e cartão (Checkout Pro), confirmação por webhook `/api/mp/webhook` e por conferência na API.
+- O pedido fica `aguardando_pagamento` e só aparece no balcão depois de aprovado; expira em 30 min.
+- Liga sozinho quando `MP_ACCESS_TOKEN` existe na Vercel. `MP_WEBHOOK_SECRET` é opcional.
+- Ainda não testado com pagamento real.
+
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
 Gravação de pedidos no Supabase testada em produção (Vercel).
 
@@ -43,7 +49,6 @@ npm run dev
 Variáveis (`.env.local`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`.
 
 ## Próximas fases
-3. Pagamento online Mercado Pago (PIX e cartão) + webhook.
 4. PDV de balcão: caixa, venda rápida, balança, impressão, modo sem internet.
 5. Painel do dono: cardápio, preços, fotos, esgotado hoje, entrega, horários, equipe, relatórios.
 6. Publicação: domínio, variáveis, dados reais e teste na loja.

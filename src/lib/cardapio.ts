@@ -8,6 +8,8 @@ export type ProdutoLoja = Product & { category_id: string; descricao: string | n
 export type Loja = {
   whatsapp: string; endereco: string; lat: number; lng: number;
   horarios: Horarios; faixas: Faixa[]; pedidoMinimo: number; aceitaAgendamento: boolean;
+  /** Pagamento pelo site (Mercado Pago) ligado. */
+  pagamentoOnline?: boolean;
 };
 /** Tudo o que o site precisa para montar o cardápio e calcular preços. */
 export type Cardapio = Omit<Catalog, "products"> & {
@@ -50,6 +52,6 @@ export async function getCardapio(): Promise<Cardapio> {
     products: (prods.data ?? []).map((p) => ({ id: p.id, category_id: p.category_id, nome: p.nome, descricao: p.descricao, kind: p.kind, preco: n(p.preco), tamanhos: p.tamanhos, sabores: p.sabores, escolha: p.escolha, ativo: p.ativo, esgotado_em: p.esgotado_em, imagem: img(p.imagem_path) })),
     promos: (promos.data ?? []).map((p) => ({ ...p, preco: Number(p.preco) })),
     imagens: { Copo: img(s.img_copo) ?? "/img/acai_copo.jpg", Pote: img(s.img_pote) ?? "/img/acai_pote.jpg" },
-    loja: { whatsapp: s.whatsapp, endereco: s.endereco, lat: s.loja_lat, lng: s.loja_lng, horarios: s.horarios, faixas: s.faixas_entrega, pedidoMinimo: Number(s.pedido_minimo), aceitaAgendamento: s.aceita_agendamento },
+    loja: { whatsapp: s.whatsapp, endereco: s.endereco, lat: s.loja_lat, lng: s.loja_lng, horarios: s.horarios, faixas: s.faixas_entrega, pedidoMinimo: Number(s.pedido_minimo), aceitaAgendamento: s.aceita_agendamento, pagamentoOnline: !!process.env.MP_ACCESS_TOKEN && !!process.env.SUPABASE_SERVICE_ROLE_KEY },
   };
 }

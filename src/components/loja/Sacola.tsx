@@ -16,11 +16,13 @@ const chip = (ativo: boolean) => `flex-1 rounded-2xl border-2 px-3 py-3 text-sm 
 
 export function Sacola({ cardapio, linhas, onQtd, onRemover, onEnviado }: {
   cardapio: Cardapio; linhas: LinhaSacola[];
-  onQtd: (id: string, qtd: number) => void; onRemover: (id: string) => void; onEnviado: (codigo: string) => void;
+  onQtd: (id: string, qtd: number) => void; onRemover: (id: string) => void; onEnviado: (codigo: string, pagarEm?: string) => void;
 }) {
   const [tipo, setTipo] = useState<"retirada" | "entrega">("retirada");
   const [cli, setCli] = useState<Cliente>({ nome: "", whatsapp: "", endereco: "", referencia: "", destino: null });
-  const [pag, setPag] = useState<"pix" | "cartao" | "dinheiro">("pix");
+  const online = !!cardapio.loja.pagamentoOnline;
+  const [pag, setPag] = useState<"pix" | "cartao" | "dinheiro" | "pix_online" | "cartao_online">(online ? "pix_online" : "pix");
+  const [email, setEmail] = useState("");
   const [troco, setTroco] = useState("");
   const [gps, setGps] = useState<"" | "buscando" | "negado">("");
   const [enviando, setEnviando] = useState(false);
@@ -65,6 +67,7 @@ export function Sacola({ cardapio, linhas, onQtd, onRemover, onEnviado }: {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           itens: linhas.map((l) => l.item), tipo, nome: cli.nome, whatsapp: cli.whatsapp, pagamento: pag,
+          email: pag.endsWith("_online") && email.trim() ? email.trim() : undefined,
           trocoPara: pag === "dinheiro" && troco ? Number(troco.replace(",", ".")) : undefined,
           ...(tipo === "entrega" ? { endereco: cli.endereco, referencia: cli.referencia || undefined, destino: cli.destino } : {}),
         }),
@@ -73,7 +76,7 @@ export function Sacola({ cardapio, linhas, onQtd, onRemover, onEnviado }: {
       if (!r.ok) { setErro(j.erro || "Não foi possível enviar o pedido"); return; }
       gravar("cliente", cli);
       gravar("ultimo", { codigo: j.pedido.codigo, itens: linhas.map((l) => l.item), em: Date.now() });
-      onEnviado(j.pedido.codigo);
+      onEnviado(j.pedido.codigo, j.redirecionar);
     } catch { setErro("Sem conexão. Confira sua internet e tente de novo."); }
     finally { setEnviando(false); }
   }
@@ -133,7 +136,19 @@ export function Sacola({ cardapio, linhas, onQtd, onRemover, onEnviado }: {
           <label className="block"><span className="rotulo">WhatsApp</span><input className="campo" type="tel" inputMode="numeric" value={cli.whatsapp} onChange={(e) => setCli({ ...cli, whatsapp: mascaraFone(e.target.value) })} placeholder="(83) 9 0000-0000" autoComplete="tel-national" /></label>
         </div>
 
-        <fieldset><legend className="rotulo">Pagamento na {tipo === "entrega" ? "entrega" : "retirada"}</legend>
+        {online && (
+          <fieldset><legend className="rotulo">Pagar agora pelo site</legend>
+            <div className="flex gap-2">
+              {([["pix_online", "PIX"], ["cartao_online", "Cartão"]] as const).map(([k, v]) => <button key={k} type="button" aria-pressed={pag === k} className={chip(pag === k)} onClick={() => setPag(k)}>{v}</button>)}
+            </div>
+            {pag.endsWith("_online") && <>
+              <p className="mt-2 text-sm text-roxo/70">{pag === "pix_online" ? "Você recebe o QR Code na próxima tela." : "Você paga em uma página segura do Mercado Pago."} O pedido vai para a loja assim que o pagamento for confirmado.</p>
+              <label className="mt-3 block"><span className="rotulo">E-mail para o comprovante (opcional)</span><input className="campo" type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@email.com" /></label>
+            </>}
+          </fieldset>
+        )}
+
+        <fieldset><legend className="rotulo">{online ? "Ou pagar" : "Pagamento"} na {tipo === "entrega" ? "entrega" : "retirada"}</legend>
           <div className="flex gap-2">
             {([["pix", "PIX"], ["cartao", "Cartão"], ["dinheiro", "Dinheiro"]] as const).map(([k, v]) => <button key={k} type="button" aria-pressed={pag === k} className={chip(pag === k)} onClick={() => setPag(k)}>{v}</button>)}
           </div>
@@ -150,7 +165,7 @@ export function Sacola({ cardapio, linhas, onQtd, onRemover, onEnviado }: {
       <div className="border-t border-roxo/10 bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         {erro && <p role="alert" className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{erro}</p>}
         <button type="button" disabled={enviando || !!bloqueio} onClick={enviar} className="botao-lima w-full">
-          {enviando ? "Enviando…" : bloqueio || <>Fazer pedido · <Preco valor={total} /></>}
+          {enviando ? "Enviando…" : bloqueio || <>{pag.endsWith("_online") ? "Ir para o pagamento" : "Fazer pedido"} · <Preco valor={total} /></>}
         </button>
       </div>
     </>

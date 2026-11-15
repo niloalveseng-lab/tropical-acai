@@ -19,7 +19,8 @@ export const pedidoSchema = z.object({
   endereco: z.string().trim().max(160).optional(),
   referencia: z.string().trim().max(120).optional(),
   destino: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).optional(),
-  pagamento: z.enum(["dinheiro", "pix", "cartao"]),
+  pagamento: z.enum(["dinheiro", "pix", "cartao", "pix_online", "cartao_online"]),
+  email: z.string().trim().toLowerCase().email("E-mail inválido").max(120).optional().or(z.literal("").transform(() => undefined)),
   trocoPara: z.number().positive().max(1000).optional(),
 });
 export type PedidoEntrada = z.input<typeof pedidoSchema>;
@@ -33,7 +34,9 @@ export type PedidoMontado = {
   destino: { lat: number; lng: number } | null; distanciaKm: number | null;
   linhas: PricedItem[];
   subtotal: number; taxaEntrega: number; total: number;
-  pagamento: "dinheiro" | "pix" | "cartao"; trocoPara: number | null;
+  pagamento: "dinheiro" | "pix" | "cartao" | "pix_online" | "cartao_online"; trocoPara: number | null;
+  /** true = pago pelo site (PIX ou cartão): o pedido só vai para a loja depois de aprovado. */
+  online: boolean; email: string | null;
   agendado: boolean; avisoHorario: string | null;
 };
 
@@ -73,6 +76,7 @@ export function montarPedido(c: Cardapio, entrada: unknown, agora: Agora = agora
     destino: p.tipo === "entrega" ? p.destino! : null, distanciaKm,
     linhas, subtotal, taxaEntrega: taxa, total,
     pagamento: p.pagamento, trocoPara: p.pagamento === "dinheiro" ? p.trocoPara ?? null : null,
+    online: p.pagamento === "pix_online" || p.pagamento === "cartao_online", email: p.email ?? null,
     agendado: !st.aberta, avisoHorario: st.aberta ? null : st.texto,
   };
 }

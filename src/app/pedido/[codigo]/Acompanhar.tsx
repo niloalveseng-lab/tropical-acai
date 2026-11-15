@@ -3,6 +3,7 @@ import { motion, MotionConfig } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Pagar } from "./Pagar";
 import type { PedidoPublico } from "@/lib/pedidos/repo";
 import { brl } from "@/components/loja/util";
 
@@ -15,12 +16,14 @@ export function Acompanhar({ inicial, whatsapp }: { inicial: PedidoPublico; what
     if (fim) return;
     const t = setInterval(async () => {
       try { const r = await fetch(`/api/pedidos/${p.codigo}`, { cache: "no-store" }); if (r.ok) setP((await r.json()).pedido); } catch { /* tenta de novo no próximo ciclo */ }
-    }, 6000);
+    }, p.status === "aguardando_pagamento" ? 4000 : 6000);
     return () => clearInterval(t);
-  }, [p.codigo, fim]);
+  }, [p.codigo, p.status, fim]);
 
   const passos = ["Recebido", "Em preparo", p.tipo === "entrega" ? "Saiu para entrega" : "Pronto para retirar", "Entregue"];
-  const atual = { novo: 0, preparo: 1, pronto: 2, saiu: 2, entregue: 3, cancelado: -1 }[p.status];
+  const atual = { aguardando_pagamento: -1, novo: 0, preparo: 1, pronto: 2, saiu: 2, entregue: 3, cancelado: -1 }[p.status];
+  const aguardando = p.status === "aguardando_pagamento";
+  const pagoOnline = p.pagamento.endsWith("_online") && !aguardando && p.status !== "cancelado";
   const msg = `Olá! Sou ${p.primeiroNome}, pedido #${p.numero} feito pelo site.`;
 
   return (
@@ -30,13 +33,17 @@ export function Acompanhar({ inicial, whatsapp }: { inicial: PedidoPublico; what
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="rounded-3xl bg-white p-6 text-center shadow-sm">
           <p className="text-sm font-bold text-roxo/70">Pedido #{p.numero}</p>
           <h1 className="mt-1 text-2xl font-extrabold" aria-live="polite">
-            {p.status === "cancelado" ? "Pedido cancelado" : atual === 3 ? `Bom apetite, ${p.primeiroNome}!` : `Recebemos seu pedido, ${p.primeiroNome}!`}
+            {aguardando ? `Falta só o pagamento, ${p.primeiroNome}` : p.status === "cancelado" ? "Pedido cancelado" : atual === 3 ? `Bom apetite, ${p.primeiroNome}!` : `Recebemos seu pedido, ${p.primeiroNome}!`}
           </h1>
           {p.agendado && atual === 0 && <p className="mt-2 text-sm font-semibold text-roxo/80">A loja está fechada agora. Começamos a preparar assim que abrir.</p>}
-          {p.status === "cancelado" && <p className="mt-2 text-sm text-roxo/80">Fale com a gente no WhatsApp para entender o que houve.</p>}
+          {pagoOnline && atual === 0 && <p className="mt-2 inline-block rounded-full bg-lima/40 px-3 py-1 text-sm font-extrabold text-roxo-escuro">✓ Pagamento confirmado</p>}
+          {aguardando && <p className="mt-2 text-sm text-roxo/80">Assim que o pagamento for confirmado, o pedido vai para a loja e esta página atualiza sozinha.</p>}
+          {p.status === "cancelado" && <p className="mt-2 text-sm text-roxo/80">{p.pagamento.endsWith("_online") ? "O pagamento não foi concluído no prazo. Se você pagou, fale com a gente no WhatsApp." : "Fale com a gente no WhatsApp para entender o que houve."}</p>}
         </motion.div>
 
-        {p.status !== "cancelado" && (
+        {aguardando && <Pagar pedido={p} />}
+
+        {p.status !== "cancelado" && !aguardando && (
           <ol className="rounded-3xl bg-white p-5 shadow-sm">
             {passos.map((nome, i) => { const feito = i <= atual, agora = i === atual; return (
               <li key={nome} className="relative flex gap-4 pb-6 last:pb-0">
@@ -55,7 +62,7 @@ export function Acompanhar({ inicial, whatsapp }: { inicial: PedidoPublico; what
           <dl className="mt-2 space-y-1 border-t border-roxo/10 pt-3 text-sm">
             {p.taxaEntrega > 0 && <div className="flex justify-between"><dt>Entrega</dt><dd className="tabular-nums">{brl(p.taxaEntrega)}</dd></div>}
             <div className="flex justify-between text-lg font-extrabold"><dt>Total</dt><dd className="tabular-nums">{brl(p.total)}</dd></div>
-            <div className="flex justify-between text-roxo/70"><dt>{p.tipo === "entrega" ? "Entrega" : "Retirada no balcão"}</dt><dd>{PAG[p.pagamento] ?? p.pagamento}</dd></div>
+            <div className="flex justify-between text-roxo/70"><dt>{p.tipo === "entrega" ? "Entrega" : "Retirada no balcão"}</dt><dd>{aguardando ? (p.pagamento === "pix_online" ? "PIX pelo site" : "Cartão pelo site") : PAG[p.pagamento] ?? p.pagamento}</dd></div>
           </dl>
         </section>
 

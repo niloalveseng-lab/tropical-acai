@@ -136,7 +136,7 @@ export function Loja({ cardapio, children }: { cardapio: Cardapio; children?: Re
         <Sacola cardapio={cardapio} linhas={linhas}
           onQtd={(id, qtd) => salvar(linhas.map((l) => (l.id === id ? { ...l, item: { ...l.item, qtd } as CartItem } : l)))}
           onRemover={(id) => salvar(linhas.filter((l) => l.id !== id))}
-          onEnviado={(codigo) => { salvar([]); router.push(`/pedido/${codigo}`); }} />
+          onEnviado={(codigo, pagarEm) => { salvar([]); if (pagarEm) window.location.href = pagarEm; else router.push(`/pedido/${codigo}`); }} />
       </Folha>
 
       <AnimatePresence>
