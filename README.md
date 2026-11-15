@@ -15,8 +15,14 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 - `src/app/pedido/[codigo]` — acompanhamento público do pedido, atualizado a cada 6 s.
 - `src/lib/pedidos/repo.ts` — grava no Supabase quando as chaves existem; sem chaves, guarda na memória (demonstração).
 
+**Fase 2b — balcão da equipe**
+- `/entrar` e `/redefinir-senha` — login da equipe (e-mail e senha) e “esqueci a senha”.
+- `/balcao` — fila de pedidos ao vivo (Supabase Realtime + conferência a cada 30 s), campainha que repete enquanto houver pedido novo, botões de status, cancelar com motivo, marcar pago, WhatsApp do cliente, mapa e comanda 80 mm.
+- `/balcao/equipe` + `/api/equipe` — só o dono: cadastra gerente/atendente com senha inicial, muda função, redefine senha, remove acesso.
+- `supabase/migrations/0003_equipe.sql` — o e-mail do dono vira “dono” automaticamente; atendente só altera status/pago/motivo dos pedidos.
+
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
-A gravação no Supabase ainda não foi testada contra um projeto real (faltam as chaves).
+Gravação de pedidos no Supabase testada em produção (Vercel).
 
 ## Rodar
 ```bash
@@ -28,6 +34,6 @@ Variáveis (`.env.local`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANO
 
 ## Próximas fases
 3. Pagamento online Mercado Pago (PIX e cartão) + webhook.
-4. PDV de balcão: caixa, fila de pedidos do site, balança, impressão, modo sem internet.
+4. PDV de balcão: caixa, venda rápida, balança, impressão, modo sem internet.
 5. Painel do dono: cardápio, preços, fotos, esgotado hoje, entrega, horários, equipe, relatórios.
 6. Publicação: domínio, variáveis, dados reais e teste na loja.
