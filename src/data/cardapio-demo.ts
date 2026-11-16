@@ -759,6 +759,6 @@ export const CARDAPIO_DEMO: Cardapio = {
    }
   ],
   "pedidoMinimo": 20,
-  "aceitaAgendamento": true
+  "aceitaAgendamento": false
  }
 } as Cardapio;

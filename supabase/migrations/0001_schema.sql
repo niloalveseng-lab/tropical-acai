@@ -41,7 +41,7 @@ create table settings (
   loja_lng double precision not null default -38.24237,
   faixas_entrega jsonb not null default '[{"ate_km":1,"taxa":5},{"ate_km":2,"taxa":7},{"ate_km":3,"taxa":8},{"ate_km":4,"taxa":10}]',
   pedido_minimo numeric(10,2) not null default 20.00,   -- só para entrega
-  aceita_agendamento boolean not null default true,
+  aceita_agendamento boolean not null default false,
   balanca jsonb not null default '{"protocolo":"prt3","baud":9600}',
   updated_at timestamptz not null default now()
 );

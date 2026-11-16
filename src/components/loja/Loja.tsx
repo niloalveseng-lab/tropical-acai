@@ -84,6 +84,10 @@ export function Loja({ cardapio, children }: { cardapio: Cardapio; children?: Re
         <section className="pt-6">
           <p className="text-sm font-bold text-roxo/70">{st ? saudacao(st.hora) : "Olá"}! Qual vai ser hoje?</p>
           <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">Monte o seu <span className="font-script font-normal text-lima-tinta">açaí</span> do seu jeito</h1>
+          {st && !st.aberta && !cardapio.loja.aceitaAgendamento && (
+            <p role="status" className="mt-4 rounded-2xl bg-roxo px-4 py-3 text-sm font-bold text-white">
+              Estamos fechados agora{st.proxima ? ` · ${st.texto.replace(/^Fechado · /, "")}` : ""}. Você pode ver o cardápio, mas os pedidos só são aceitos no horário de funcionamento.
+            </p>)}
           {ultimo && linhas.length === 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
               <p className="min-w-0 flex-1 text-sm font-semibold">Quer repetir o último pedido?</p>

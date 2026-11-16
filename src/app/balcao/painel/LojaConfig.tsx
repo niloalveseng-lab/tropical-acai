@@ -52,7 +52,7 @@ export default function LojaConfig({ dados, avisar, recarregar }: Props) {
             </li>
           );
         })}</ul>
-        <label className="mt-3 flex items-center gap-3 border-t border-roxo/10 pt-3 text-sm font-semibold"><Chave rotulo="Aceitar pedidos com a loja fechada" ligado={c.aceita_agendamento} onChange={(v) => salvar({ aceita_agendamento: v })} />Aceitar pedidos pelo site com a loja fechada (ficam para a abertura)</label>
+        <label className="mt-3 flex items-center gap-3 border-t border-roxo/10 pt-3 text-sm font-semibold"><Chave rotulo="Aceitar pedidos com a loja fechada" ligado={c.aceita_agendamento} onChange={(v) => salvar({ aceita_agendamento: v })} />Aceitar pedidos pelo site com a loja fechada (ficam para a abertura). Desligado = site só aceita pedidos no horário.</label>
       </Cartao>
 
       <Cartao titulo="Preços gerais">

@@ -48,8 +48,12 @@ describe("pedido pelo site", () => {
   it("não aceita açaí no quilo pelo site", () => {
     expect(() => montarPedido(C, { ...base, tipo: "retirada", itens: [{ tipo: "kg", pesoBrutoG: 500, taraG: 0, qtd: 1 }] }, sab15h)).toThrow(PedidoError);
   });
-  it("loja fechada: pedido fica agendado", () => {
-    const p = montarPedido(C, { ...base, tipo: "retirada", itens: [acai500] }, seg15h);
+  it("loja fechada: recusa o pedido (padrão)", () => {
+    expect(() => montarPedido(C, { ...base, tipo: "retirada", itens: [acai500] }, seg15h)).toThrow(/Fechado.*abre amanhã.*horário de funcionamento/);
+  });
+  it("loja fechada com agendamento ligado: pedido fica agendado", () => {
+    const C2 = { ...C, loja: { ...C.loja, aceitaAgendamento: true } };
+    const p = montarPedido(C2, { ...base, tipo: "retirada", itens: [acai500] }, seg15h);
     expect(p.agendado).toBe(true);
     expect(p.avisoHorario).toMatch(/abre amanhã/);
   });
