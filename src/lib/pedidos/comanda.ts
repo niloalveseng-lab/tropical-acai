@@ -43,19 +43,19 @@ export function linkMapa(p: PedidoBalcao) {
   return null;
 }
 
-export function textoComanda(p: PedidoBalcao) {
+export function textoComanda(p: PedidoBalcao, colunas = 32) {
   const l: string[] = [];
-  l.push("TROPICAL AÇAÍ", `PEDIDO #${p.numero}  ${hora(p.created_at)}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(32));
+  l.push("TROPICAL AÇAÍ", `PEDIDO #${p.numero}  ${hora(p.created_at)}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(colunas));
   if (p.cliente_nome) l.push(`Cliente: ${p.cliente_nome}`);
   if (p.cliente_telefone) l.push(`Fone: ${p.cliente_telefone}`);
   if (p.tipo === "entrega") { if (p.endereco) l.push(`End.: ${p.endereco}`); if (p.bairro) l.push(`Ref.: ${p.bairro}`); }
-  l.push("-".repeat(32));
+  l.push("-".repeat(colunas));
   for (const i of p.order_items) {
     l.push(`${i.quantidade}x ${i.nome}  ${brl(i.total)}`);
     if (i.descricao) l.push(`   ${i.descricao}`);
     if (i.detalhes?.obs) l.push(`   OBS: ${i.detalhes.obs}`);
   }
-  l.push("-".repeat(32), `Subtotal: ${brl(p.subtotal)}`);
+  l.push("-".repeat(colunas), `Subtotal: ${brl(p.subtotal)}`);
   if (Number(p.taxa_entrega) > 0) l.push(`Entrega: ${brl(p.taxa_entrega)}`);
   l.push(`TOTAL: ${brl(p.total)}`, `Pagamento: ${PAGAMENTO[p.forma_pagamento] ?? p.forma_pagamento}${p.pago ? " (PAGO)" : ""}`);
   if (p.troco_para) l.push(`Troco para ${brl(p.troco_para)} → levar ${brl(Number(p.troco_para) - Number(p.total))}`);
@@ -65,11 +65,31 @@ export function textoComanda(p: PedidoBalcao) {
 
 export const CAMPOS = "id,numero,codigo,canal,status,tipo,cliente_nome,cliente_telefone,endereco,bairro,entrega_lat,entrega_lng,distancia_km,subtotal,taxa_entrega,total,forma_pagamento,pago,troco_para,observacao,motivo_cancelamento,created_at,updated_at,order_items(nome,descricao,quantidade,total,detalhes)";
 
-/** Abre a comanda em uma janela pronta para a impressora térmica de 80 mm. */
-export function imprimir(p: PedidoBalcao) {
+/** Largura do papel da impressora deste computador (58 ou 80 mm), guardada no navegador. */
+export type Papel = 58 | 80;
+export function papelSalvo(): Papel {
+  try { return localStorage.getItem("ta_papel") === "80" ? 80 : 58; } catch { return 58; }
+}
+export function salvarPapel(p: Papel) { try { localStorage.setItem("ta_papel", String(p)); } catch { /* sem armazenamento */ } }
+
+/**
+ * Abre a comanda pronta para a impressora térmica.
+ * A página tem exatamente a altura do texto (medida depois de montar), então a impressora
+ * não puxa papel em branco antes nem depois. Margens zeradas; largura 58 ou 80 mm.
+ */
+export function imprimir(p: PedidoBalcao, papel: Papel = papelSalvo()) {
   const w = window.open("", "_blank", "width=380,height=640");
   if (!w) return;
   const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
-  w.document.write(`<html><head><title>Pedido #${p.numero}</title><style>@page{size:80mm auto;margin:3mm}body{font:13px/1.35 monospace;white-space:pre-wrap;margin:0}</style></head><body>${esc(textoComanda(p))}</body></html>`);
-  w.document.close(); w.focus(); w.print();
+  const util = papel === 58 ? 48 : 72; // área impressa em mm
+  const colunas = papel === 58 ? 30 : 42;
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido #${p.numero}</title><style id="pg">@page{size:${papel}mm 100mm;margin:0}</style><style>html,body{margin:0;padding:0;background:#fff;color:#000}body{width:${util}mm;padding:0 ${(papel - util) / 2}mm;font:bold ${papel === 58 ? 11 : 13}px/1.3 "Courier New",monospace;white-space:pre-wrap;word-break:break-word}</style></head><body><div id="c">${esc(textoComanda(p, colunas))}\n\n</div></body></html>`);
+  w.document.close();
+  const pronto = () => {
+    const alturaMm = Math.ceil((w.document.getElementById("c")!.getBoundingClientRect().height * 25.4) / 96) + 4;
+    w.document.getElementById("pg")!.textContent = `@page{size:${papel}mm ${alturaMm}mm;margin:0}`;
+    w.focus(); w.print();
+    setTimeout(() => w.close(), 500);
+  };
+  if (w.document.readyState === "complete") setTimeout(pronto, 50); else w.addEventListener("load", pronto);
 }

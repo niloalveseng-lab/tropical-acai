@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { emAberto, proximo, ROTULO, type Status } from "@/lib/pedidos/status";
-import { brl, CAMPOS, hora, imprimir, linkMapa, linkWhatsApp, PAGAMENTO, type PedidoBalcao } from "@/lib/pedidos/comanda";
+import { brl, CAMPOS, hora, imprimir, linkMapa, linkWhatsApp, PAGAMENTO, papelSalvo, salvarPapel, type Papel, type PedidoBalcao } from "@/lib/pedidos/comanda";
 
 
 /** 00:00 de hoje em Sousa-PB (UTC−3), em ISO. */
@@ -139,6 +139,7 @@ export default function Balcao() {
             <Link href="/balcao/caixa" className="rounded-full bg-lima px-3 py-1.5 font-extrabold text-roxo-escuro">Caixa</Link>
             <Link href="/balcao/painel" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Painel</Link>
             {eu.funcao === "dono" && <Link href="/balcao/equipe" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Equipe</Link>}
+            <SeletorPapel />
             <button onClick={sair} className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Sair</button>
           </div>
         </div>
@@ -252,5 +253,20 @@ function Cartao({ p, onAtualizar }: { p: PedidoBalcao; onAtualizar: (p: PedidoBa
         )}
       </div>
     </motion.article>
+  );
+}
+
+/** Largura do papel da impressora deste computador (fica salva no navegador). */
+function SeletorPapel() {
+  const [papel, setPapel] = useState<Papel>(58);
+  useEffect(() => setPapel(papelSalvo()), []);
+  return (
+    <label className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 font-bold" title="Largura do papel da impressora térmica">
+      🖨️
+      <select aria-label="Largura do papel da impressora" className="bg-transparent font-bold outline-none [&>option]:text-black" value={papel} onChange={(e) => { const v = Number(e.target.value) as Papel; setPapel(v); salvarPapel(v); }}>
+        <option value={58}>58 mm</option>
+        <option value={80}>80 mm</option>
+      </select>
+    </label>
   );
 }
