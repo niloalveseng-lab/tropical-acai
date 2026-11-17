@@ -68,3 +68,10 @@ commit;
 
 -- Fotos que já vêm com o site (as demais são enviadas pelo painel).
 update products p set imagem_path = v.img from (values ('batida','/img/batida.jpg'),('shake','/img/milkshake.jpg'),('cascao','/img/cascao.jpg'),('pic1','/img/pic_acai.jpg'),('pic3','/img/pic_brownie.jpg'),('pic4','/img/pic_coco.jpg')) v(id,img) where p.id = v.id and p.imagem_path is null;
+
+-- Bebidas
+insert into categories (id, nome, ordem) values ('bebidas', 'Bebidas', 6) on conflict (id) do nothing;
+insert into products (id, category_id, nome, descricao, kind, preco, ordem, ativo) values
+ ('agua', 'bebidas', 'Água Mineral', '500 ml', 'simples', 3.00, 1, true),
+ ('agua-gas', 'bebidas', 'Água Mineral com Gás', '500 ml', 'simples', 5.00, 2, true)
+on conflict (id) do nothing;
