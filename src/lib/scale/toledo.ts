@@ -3,7 +3,7 @@
  *
  * Configuração na balança (manual Prix 3 Fit, parâmetros técnicos):
  *   C14 = Prt3  (protocolo com status de estabilidade)  ← recomendado
- *   C15 = velocidade (quando disponível) — usar a mesma do sistema (padrão 9600)
+ *   C15 = velocidade (quando disponível) — usar a mesma do sistema (padrão 2400, como vem a balança da loja)
  *   Formato fixo: 8 bits de dados, sem paridade, 1 stop bit.
  *
  * Protocolo Prt3: o PDV envia ENQ (0x05) e a balança responde
@@ -78,7 +78,7 @@ export class ToledoScale {
   }
 
   /** Abre a janela do navegador para escolher a porta (só na 1ª vez; depois reconecta sozinho). */
-  async conectar(baudRate = 9600, pedirPorta = true) {
+  async conectar(baudRate = 2400, pedirPorta = true) {
     const serial = (navigator as unknown as { serial: { getPorts(): Promise<SerialPortLike[]>; requestPort(): Promise<SerialPortLike> } }).serial;
     const ja = await serial.getPorts();
     this.port = ja[0] ?? (pedirPorta ? await serial.requestPort() : null);
