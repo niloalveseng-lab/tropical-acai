@@ -6,14 +6,15 @@ import { supabaseNavegador } from "@/lib/supabase/client";
 import { brl, Cartao, type Aviso } from "./comum";
 
 type Rel = {
-  total: number; pedidos: number; ticket_medio: number; taxas_entrega: number; cancelados: number; quilo_g: number;
+  total: number; pedidos: number; ticket_medio: number; taxas_entrega: number; cancelados: number; quilo_g: number; a_receber?: number;
+  entregas?: { qtd: number; taxas: number; por_entregador: { entregador: string; qtd: number; taxas: number }[] };
   por_dia: { dia: string; total: number; pedidos: number }[];
   por_canal: { canal: string; total: number; pedidos: number }[];
   por_pagamento: { forma: string; total: number }[];
   mais_vendidos: { nome: string; quantidade: number; total: number }[];
   caixas: { aberto_em: string; fechado_em: string | null; abertura: number; contado: number | null; esperado: number; observacao: string | null }[];
 };
-const CANAL: Record<string, string> = { site: "Site", balcao: "Balcão", whatsapp: "WhatsApp" };
+const CANAL: Record<string, string> = { site: "Site", balcao: "Balcão", whatsapp: "WhatsApp (pelo caixa)" };
 const menosDias = (data: string, n: number) => { const d = new Date(data + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
 const dataBr = (iso: string) => iso.slice(8, 10) + "/" + iso.slice(5, 7);
 const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Fortaleza" });
@@ -67,6 +68,11 @@ export default function Relatorios({ avisar }: { avisar: Aviso }) {
               <Cartao titulo="Por forma de pagamento"><Tabela linhas={r.por_pagamento.map((p) => [PAGAMENTO[p.forma] ?? p.forma, "", brl(p.total)])} />
                 {Number(r.taxas_entrega) > 0 && <p className="mt-2 text-xs text-roxo/60">Inclui {brl(r.taxas_entrega)} de taxas de entrega.</p>}</Cartao>
             </div>
+            {r.entregas && r.entregas.qtd > 0 && (
+              <Cartao titulo="Entregas (saídas)" dica={`${r.entregas.qtd} entregas · ${brl(r.entregas.taxas)} em taxas${Number(r.a_receber) > 0 ? ` · ${brl(Number(r.a_receber))} ficou a receber` : ""}`}>
+                <Tabela linhas={r.entregas.por_entregador.map((e) => [e.entregador, `${e.qtd} entregas`, brl(e.taxas)])} />
+              </Cartao>
+            )}
             <Cartao titulo="Mais vendidos" dica={Number(r.quilo_g) > 0 ? `Açaí no quilo: ${(Number(r.quilo_g) / 1000).toFixed(3).replace(".", ",")} kg vendidos.` : undefined}>
               <Tabela linhas={r.mais_vendidos.map((m) => [m.nome, `${m.quantidade}×`, brl(m.total)])} />
             </Cartao>

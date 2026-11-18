@@ -2,7 +2,7 @@
 import { supabaseNavegador } from "@/lib/supabase/client";
 
 export type Sessao = { id: string; aberto_em: string; valor_abertura: number };
-export type Resumo = { abertura: number; por_metodo: Record<string, number>; balcao_qtd: number; balcao_total: number; site_qtd: number; site_total: number; site_dinheiro: number; sangrias: number; suprimentos: number; dinheiro_esperado: number };
+export type Resumo = { abertura: number; por_metodo: Record<string, number>; balcao_qtd: number; balcao_total: number; site_qtd: number; site_total: number; site_dinheiro: number; sangrias: number; suprimentos: number; dinheiro_esperado: number; a_receber?: number; entregas_qtd?: number; taxas_entrega?: number };
 export type Tara = { nome: string; g: number };
 
 /** Operações do caixa. Em produção fala com o Supabase; sem banco, guarda na memória (demonstração). */

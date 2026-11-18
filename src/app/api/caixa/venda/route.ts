@@ -6,26 +6,35 @@ import { supabaseConfigurado } from "@/lib/supabase/server";
 
 let seqDemo = 100;
 
+const lojaDe = (c: Awaited<ReturnType<typeof getCardapio>>) => ({ lat: c.loja.lat, lng: c.loja.lng, faixas: c.loja.faixas, pedidoMinimo: c.loja.pedidoMinimo });
+
 export const dynamic = "force-dynamic";
 
 /** Registra uma venda do balcão no caixa aberto. Preços refeitos aqui; o navegador não manda preço. */
 export async function POST(req: Request) {
   try {
     if (!supabaseConfigurado()) { // demonstração: calcula, mas não grava
-      const v = montarVenda(await getCardapio(), await req.json());
-      return NextResponse.json({ id: "demo", numero: ++seqDemo, total: v.total, troco: v.troco }, { status: 201 });
+      const c = await getCardapio();
+      const v = montarVenda(c, await req.json(), undefined, lojaDe(c));
+      return NextResponse.json({ id: "demo", numero: ++seqDemo, total: v.total, troco: v.troco, taxa: v.taxa }, { status: 201 });
     }
     const operador = await exigirEquipe();
-    const venda = montarVenda(await getCardapio(), await req.json());
     const sb = admin();
+    const { data: pode } = await sb.from("staff").select("role,permissoes").eq("user_id", operador).single();
+    if (pode && pode.role !== "dono" && (pode.permissoes as Record<string, boolean>)?.caixa === false) throw new AcessoNegado("Você não tem permissão para usar o caixa.");
+    const c = await getCardapio();
+    const venda = montarVenda(c, await req.json(), undefined, lojaDe(c));
 
     const { data: caixa } = await sb.from("cash_sessions").select("id").is("fechado_em", null).maybeSingle();
     if (!caixa) throw new VendaError("O caixa está fechado. Abra o caixa antes de vender.");
 
     const { data: o, error } = await sb.from("orders").insert({
-      canal: "balcao", tipo: "balcao", status: venda.paraPreparo ? "preparo" : "entregue",
-      cliente_nome: venda.cliente, subtotal: venda.total, taxa_entrega: 0, total: venda.total,
-      forma_pagamento: venda.forma, pago: true, troco_para: venda.recebido,
+      canal: venda.canal, tipo: venda.tipo, status: venda.status,
+      cliente_nome: venda.cliente, cliente_telefone: venda.telefone,
+      endereco: venda.entrega?.endereco ?? null, bairro: venda.entrega?.referencia ?? null,
+      entrega_lat: venda.entrega?.lat ?? null, entrega_lng: venda.entrega?.lng ?? null, distancia_km: venda.entrega?.distanciaKm ?? null,
+      subtotal: venda.subtotal, taxa_entrega: venda.taxa, total: venda.total,
+      forma_pagamento: venda.forma, pago: venda.pago, troco_para: venda.recebido, observacao: venda.observacao,
       operador, cash_session_id: caixa.id,
     }).select("id,numero").single();
     if (error || !o) throw new Error("Falha ao gravar a venda: " + error?.message);
@@ -36,10 +45,12 @@ export async function POST(req: Request) {
       detalhes: l.detalhes, peso_liquido_g: typeof l.detalhes.liquidoG === "number" ? l.detalhes.liquidoG : null,
     })));
     if (e2) await desfazer("Falha ao gravar os itens: " + e2.message);
-    const { error: e3 } = await sb.from("payments").insert(venda.pagamentos.map((p) => ({ order_id: o.id, metodo: p.metodo, valor: p.valor, provedor: "manual", status: "approved" })));
-    if (e3) await desfazer("Falha ao gravar o pagamento: " + e3.message);
+    if (venda.pagamentos.length) {
+      const { error: e3 } = await sb.from("payments").insert(venda.pagamentos.map((p) => ({ order_id: o.id, metodo: p.metodo, valor: p.valor, provedor: "manual", status: "approved" })));
+      if (e3) await desfazer("Falha ao gravar o pagamento: " + e3.message);
+    }
 
-    return NextResponse.json({ id: o.id, numero: o.numero, total: venda.total, troco: venda.troco }, { status: 201 });
+    return NextResponse.json({ id: o.id, numero: o.numero, total: venda.total, troco: venda.troco, taxa: venda.taxa, pago: venda.pago }, { status: 201 });
   } catch (e) {
     if (e instanceof AcessoNegado) return NextResponse.json({ erro: e.message }, { status: 403 });
     if (e instanceof VendaError) return NextResponse.json({ erro: e.message }, { status: 422 });

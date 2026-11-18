@@ -31,3 +31,34 @@ describe("venda no balcão", () => {
     expect(() => montarVenda(c, { itens: [acai], pagamentos: [{ metodo: "dinheiro", valor: size.preco }], recebido: 1 }, agora)).toThrow(/menor/);
   });
 });
+
+describe("pedido de WhatsApp com entrega pelo caixa", () => {
+  const loja = { lat: -6.7490513, lng: -38.24237, faixas: [{ ate_km: 1, taxa: 5 }, { ate_km: 2, taxa: 7 }, { ate_km: 3, taxa: 8 }, { ate_km: 4, taxa: 10 }], pedidoMinimo: 20 };
+  const grande = { ...acai, qtd: 2 };
+  const perto = { endereco: "Rua A, 10", lat: -6.7520, lng: -38.2430 }; // ~0,35 km
+  const base = { itens: [grande], canal: "whatsapp", tipo: "entrega", cliente: "Maria", telefone: "(83) 99999-1234", entrega: perto };
+
+  it("calcula a taxa pela distância e soma no total", () => {
+    const sub = Math.round(size.preco * 2 * 100) / 100;
+    const v = montarVenda(c, { ...base, pagamentos: [{ metodo: "pix", valor: sub + 5 }] }, agora, loja);
+    expect(v.taxa).toBe(5);
+    expect(v.total).toBe(Math.round((sub + 5) * 100) / 100);
+    expect(v.entrega?.distanciaKm).toBeLessThan(1);
+    expect(v.telefone).toBe("83999991234");
+    expect(v.status).toBe("preparo");
+  });
+  it("cobra na entrega: sem pagamento agora, fica a receber", () => {
+    const v = montarVenda(c, { ...base, cobrarDepois: true, formaPrevista: "dinheiro", recebido: 100 }, agora, loja);
+    expect(v.pago).toBe(false);
+    expect(v.pagamentos).toHaveLength(0);
+    expect(v.troco).toBe(Math.round((100 - v.total) * 100) / 100);
+  });
+  it("recusa fora da área, abaixo do mínimo e sem nome", () => {
+    expect(() => montarVenda(c, { ...base, entrega: { endereco: "Longe", lat: -6.80, lng: -38.24 }, cobrarDepois: true, formaPrevista: "pix" }, agora, loja)).toThrow(/Entregamos até 4 km/);
+    expect(() => montarVenda(c, { ...base, itens: [{ tipo: "produto", productId: "pic0", qtd: 1 }], cobrarDepois: true, formaPrevista: "pix" }, agora, loja)).toThrow(/mínimo/);
+    expect(() => montarVenda(c, { ...base, cliente: "", cobrarDepois: true, formaPrevista: "pix" }, agora, loja)).toThrow(/nome/);
+  });
+  it("venda no balcão não aceita cobrar depois", () => {
+    expect(() => montarVenda(c, { itens: [acai], cobrarDepois: true, formaPrevista: "pix" }, agora, loja)).toThrow(/na hora/);
+  });
+});

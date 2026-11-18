@@ -5,7 +5,7 @@ export type PedidoBalcao = {
   cliente_nome: string | null; cliente_telefone: string | null; endereco: string | null; bairro: string | null;
   entrega_lat: number | null; entrega_lng: number | null; distancia_km: number | null;
   subtotal: number; taxa_entrega: number; total: number; forma_pagamento: string; pago: boolean; troco_para: number | null;
-  observacao: string | null; motivo_cancelamento: string | null; created_at: string; updated_at: string;
+  observacao: string | null; motivo_cancelamento: string | null; entregador?: string | null; created_at: string; updated_at: string;
   order_items: ItemBalcao[];
 };
 
@@ -45,7 +45,7 @@ export function linkMapa(p: PedidoBalcao) {
 
 export function textoComanda(p: PedidoBalcao, colunas = 32) {
   const l: string[] = [];
-  l.push("TROPICAL AÇAÍ", `PEDIDO #${p.numero}  ${hora(p.created_at)}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(colunas));
+  l.push("TROPICAL AÇAÍ", `PEDIDO #${p.numero}  ${hora(p.created_at)}${p.canal === "whatsapp" ? "  (WhatsApp)" : p.canal === "site" ? "  (Site)" : ""}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(colunas));
   if (p.cliente_nome) l.push(`Cliente: ${p.cliente_nome}`);
   if (p.cliente_telefone) l.push(`Fone: ${p.cliente_telefone}`);
   if (p.tipo === "entrega") { if (p.endereco) l.push(`End.: ${p.endereco}`); if (p.bairro) l.push(`Ref.: ${p.bairro}`); }
@@ -57,13 +57,14 @@ export function textoComanda(p: PedidoBalcao, colunas = 32) {
   }
   l.push("-".repeat(colunas), `Subtotal: ${brl(p.subtotal)}`);
   if (Number(p.taxa_entrega) > 0) l.push(`Entrega: ${brl(p.taxa_entrega)}`);
-  l.push(`TOTAL: ${brl(p.total)}`, `Pagamento: ${PAGAMENTO[p.forma_pagamento] ?? p.forma_pagamento}${p.pago ? " (PAGO)" : ""}`);
+  l.push(`TOTAL: ${brl(p.total)}`, `Pagamento: ${PAGAMENTO[p.forma_pagamento] ?? p.forma_pagamento}${p.pago ? " (PAGO)" : " - A COBRAR"}`);
+  if (p.entregador) l.push(`Entregador: ${p.entregador}`);
   if (p.troco_para) l.push(`Troco para ${brl(p.troco_para)} → levar ${brl(Number(p.troco_para) - Number(p.total))}`);
   if (p.observacao) l.push("", p.observacao);
   return l.join("\n");
 }
 
-export const CAMPOS = "id,numero,codigo,canal,status,tipo,cliente_nome,cliente_telefone,endereco,bairro,entrega_lat,entrega_lng,distancia_km,subtotal,taxa_entrega,total,forma_pagamento,pago,troco_para,observacao,motivo_cancelamento,created_at,updated_at,order_items(nome,descricao,quantidade,total,detalhes)";
+export const CAMPOS = "id,numero,codigo,canal,status,tipo,cliente_nome,cliente_telefone,endereco,bairro,entrega_lat,entrega_lng,distancia_km,subtotal,taxa_entrega,total,forma_pagamento,pago,troco_para,observacao,motivo_cancelamento,created_at,updated_at,entregador,order_items(nome,descricao,quantidade,total,detalhes)";
 
 /** Largura do papel da impressora deste computador (58 ou 80 mm), guardada no navegador. */
 export type Papel = 58 | 80;

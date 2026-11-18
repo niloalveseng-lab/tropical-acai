@@ -10,6 +10,8 @@ import { agoraSousa, priceItem, PricingError, promoDisponivel, type CartItem, ty
 import { ToledoScale } from "@/lib/scale/toledo";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { caixaStore, type CaixaStore, type Resumo, type Sessao, type Tara } from "@/lib/caixa/store";
+import { checarPedidoMinimo, cotarEntrega } from "@/lib/delivery";
+import { LocalEntrega, type DadosEntrega } from "./Entrega";
 
 type Linha = { chave: number; item: CartItem; preco: PricedItem };
 const num = (s: string) => Number(s.replace(/\./g, "").replace(",", ".")) || 0;
@@ -27,7 +29,12 @@ export default function Caixa({ cardapio: c }: { cardapio: Cardapio }) {
   const [carrinho, setCarrinho] = useState<Linha[]>([]);
   const [cliente, setCliente] = useState("");
   const [paraPreparo, setParaPreparo] = useState(false);
-  const [modal, setModal] = useState<null | "pagar" | "sangria" | "suprimento" | "fechar">(null);
+  const [canal, setCanal] = useState<"balcao" | "whatsapp">("balcao");
+  const [tipo, setTipo] = useState<"balcao" | "retirada" | "entrega">("balcao");
+  const [telefone, setTelefone] = useState("");
+  const [entrega, setEntrega] = useState<DadosEntrega | null>(null);
+  const [obs, setObs] = useState("");
+  const [modal, setModal] = useState<null | "pagar" | "sangria" | "suprimento" | "fechar" | "entrega">(null);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string; pedidoId?: string } | null>(null);
   const seq = useRef(1);
 
@@ -36,8 +43,8 @@ export default function Caixa({ cardapio: c }: { cardapio: Cardapio }) {
     (async () => {
       const { data: { user } } = await sb().auth.getUser();
       if (!user) return router.replace("/entrar");
-      const { data: funcao } = await sb().rpc("minha_funcao");
-      if (!funcao) return router.replace("/balcao");
+      const [{ data: funcao }, { data: pode }] = await Promise.all([sb().rpc("minha_funcao"), sb().rpc("minhas_permissoes")]);
+      if (!funcao || !(pode as Record<string, boolean> | null)?.caixa) return router.replace("/balcao");
       setEu({ id: user.id, funcao: funcao as string });
     })();
   }, [sb, router, c.demo]);
@@ -47,7 +54,16 @@ export default function Caixa({ cardapio: c }: { cardapio: Cardapio }) {
   }, [store]);
   useEffect(() => { if (eu) carregarSessao(); }, [eu, carregarSessao]);
 
-  const total = cents(carrinho.reduce((s, l) => s + l.preco.total, 0));
+  const subtotal = cents(carrinho.reduce((s, l) => s + l.preco.total, 0));
+  const cot = tipo === "entrega" && entrega ? cotarEntrega({ lat: c.loja.lat, lng: c.loja.lng }, entrega, c.loja.faixas) : null;
+  const taxa = cot?.entrega ? cot.taxa : 0;
+  const total = cents(subtotal + taxa);
+  const minimo = tipo === "entrega" && carrinho.length ? checarPedidoMinimo(subtotal, c.loja.pedidoMinimo) : null;
+  const pendencia = !carrinho.length ? "Adicione itens"
+    : tipo !== "balcao" && !cliente.trim() ? "Informe o nome do cliente"
+    : tipo === "entrega" && !entrega ? "Marque o local da entrega"
+    : minimo ?? "";
+  function novoPedido() { setCarrinho([]); setCliente(""); setTelefone(""); setEntrega(null); setObs(""); setParaPreparo(false); setTipo("balcao"); setCanal("balcao"); }
 
   function adicionar(item: CartItem) {
     try {
@@ -124,28 +140,53 @@ export default function Caixa({ cardapio: c }: { cardapio: Cardapio }) {
                 ))}
               </ul>
             )}
-            <div className="mt-3 space-y-3 border-t border-roxo/10 pt-3">
-              <input className="campo !py-2 text-sm" placeholder="Nome do cliente (opcional)" value={cliente} onChange={(e) => setCliente(e.target.value)} maxLength={60} />
-              <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={paraPreparo} onChange={(e) => setParaPreparo(e.target.checked)} />Enviar para a fila de preparo</label>
+            <div className="mt-3 space-y-3 border-t border-roxo/10 pt-3 text-sm">
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-creme p-1" role="radiogroup" aria-label="Origem do pedido">
+                {([["balcao", "🏪 Balcão"], ["whatsapp", "💬 WhatsApp"]] as const).map(([k, v]) => <button key={k} role="radio" aria-checked={canal === k} onClick={() => { setCanal(k); if (k === "whatsapp" && tipo === "balcao") setTipo("entrega"); if (k === "balcao") setTipo("balcao"); }} className={`rounded-lg py-2 font-extrabold ${canal === k ? "bg-roxo text-white" : "text-roxo"}`}>{v}</button>)}
+              </div>
+              <div className="grid grid-cols-3 gap-1 rounded-xl bg-creme p-1" role="radiogroup" aria-label="Tipo do pedido">
+                {([["balcao", "Na loja"], ["retirada", "Retirada"], ["entrega", "Entrega"]] as const).map(([k, v]) => <button key={k} role="radio" aria-checked={tipo === k} onClick={() => setTipo(k)} className={`rounded-lg py-2 font-extrabold ${tipo === k ? "bg-roxo text-white" : "text-roxo"}`}>{v}</button>)}
+              </div>
+              <input className="campo !py-2" placeholder={tipo === "balcao" ? "Nome do cliente (opcional)" : "Nome do cliente"} value={cliente} onChange={(e) => setCliente(e.target.value)} maxLength={60} />
+              {tipo !== "balcao" && <input className="campo !py-2" inputMode="tel" placeholder="WhatsApp do cliente (opcional)" value={telefone} onChange={(e) => setTelefone(e.target.value)} maxLength={20} />}
+              {tipo === "entrega" && (entrega ? (
+                <div className="rounded-xl bg-creme p-2.5">
+                  <div className="flex items-start gap-2"><span className="min-w-0 flex-1 font-bold">📍 {entrega.endereco}{entrega.referencia && <span className="block text-xs font-semibold text-roxo/70">{entrega.referencia}</span>}</span>
+                    <button onClick={() => setModal("entrega")} className="text-xs font-bold text-roxo underline">alterar</button></div>
+                  {cot && (cot.entrega ? <div className="mt-1 text-xs font-bold text-roxo/70">{cot.distanciaKm.toFixed(1).replace(".", ",")} km · taxa {brl(cot.taxa)}</div> : <div className="mt-1 text-xs font-bold text-red-700">{cot.motivo}</div>)}
+                </div>
+              ) : <button onClick={() => setModal("entrega")} className="w-full rounded-xl border-2 border-dashed border-roxo/30 py-2.5 font-extrabold text-roxo">📍 Marcar local da entrega</button>)}
+              {tipo !== "balcao" && <input className="campo !py-2" placeholder="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} maxLength={300} />}
+              {tipo === "balcao" && <label className="flex items-center gap-2 font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={paraPreparo} onChange={(e) => setParaPreparo(e.target.checked)} />Enviar para a fila de preparo</label>}
+              {taxa > 0 && <div className="space-y-0.5 text-roxo/70"><div className="flex justify-between"><span>Subtotal</span><span>{brl(subtotal)}</span></div><div className="flex justify-between"><span>Entrega</span><span>{brl(taxa)}</span></div></div>}
               <div className="flex items-baseline justify-between"><span className="font-bold">Total</span><span className="text-3xl font-extrabold text-roxo">{brl(total)}</span></div>
+              {pendencia && carrinho.length > 0 && <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-900">{pendencia}</p>}
               <div className="flex gap-2">
-                <button disabled={!carrinho.length} onClick={() => setModal("pagar")} className="botao-lima flex-1">Receber</button>
-                {carrinho.length > 0 && <button onClick={() => setCarrinho([])} className="rounded-full bg-red-50 px-4 font-bold text-red-700">Limpar</button>}
+                <button disabled={!!pendencia || (tipo === "entrega" && !cot?.entrega)} onClick={() => setModal("pagar")} className="botao-lima flex-1">{tipo === "balcao" ? "Receber" : "Finalizar pedido"}</button>
+                {(carrinho.length > 0 || cliente || entrega) && <button onClick={novoPedido} className="rounded-full bg-red-50 px-4 font-bold text-red-700">Limpar</button>}
               </div>
             </div>
           </aside>
         </div>
       )}
 
-      {modal === "pagar" && <Pagar total={total} onFechar={() => setModal(null)} onConfirmar={async (pagamentos, recebido) => {
-        const r = await fetch("/api/caixa/venda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ itens: carrinho.map((l) => l.item), pagamentos, recebido, cliente: cliente || undefined, paraPreparo }) });
+      {modal === "pagar" && <Pagar total={total} cobrarDepois={tipo === "entrega" ? "na entrega" : tipo === "retirada" ? "na retirada" : null} onFechar={() => setModal(null)} onConfirmar={async (pagamentos, recebido, formaPrevista) => {
+        const corpo = {
+          itens: carrinho.map((l) => l.item), pagamentos, recebido, cobrarDepois: !!formaPrevista, formaPrevista,
+          cliente: cliente.trim() || undefined, telefone: telefone.trim() || undefined, paraPreparo, canal, tipo,
+          entrega: tipo === "entrega" && entrega ? { endereco: entrega.endereco, referencia: entrega.referencia || undefined, lat: entrega.lat, lng: entrega.lng } : undefined,
+          observacao: obs.trim() || undefined,
+        };
+        const r = await fetch("/api/caixa/venda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(corpo) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) return (j.erro as string) ?? "Erro ao registrar a venda";
-        store.registrarDemo?.(pagamentos, j.total);
-        setCarrinho([]); setCliente(""); setParaPreparo(false); setModal(null);
-        setAviso({ tipo: "ok", texto: `Venda #${j.numero} registrada · ${brl(j.total)}${j.troco > 0 ? ` · TROCO ${brl(j.troco)}` : ""}`, pedidoId: j.id });
+        if (!formaPrevista) store.registrarDemo?.(pagamentos, j.total);
+        novoPedido(); setModal(null);
+        const nome = tipo === "balcao" ? "Venda" : "Pedido";
+        setAviso({ tipo: "ok", texto: `${nome} #${j.numero} registrado · ${brl(j.total)}${j.taxa > 0 ? ` (entrega ${brl(j.taxa)})` : ""}${formaPrevista ? ` · cobrar ${tipo === "entrega" ? "na entrega" : "na retirada"}` : ""}${j.troco > 0 ? ` · TROCO ${brl(j.troco)}` : ""}`, pedidoId: j.id });
         return null;
       }} />}
+      {modal === "entrega" && <Janela titulo="Local da entrega" onFechar={() => setModal(null)}><LocalEntrega c={c} inicial={entrega} onCancelar={() => setModal(null)} onSalvar={(d) => { setEntrega(d); setModal(null); }} /></Janela>}
       {(modal === "sangria" || modal === "suprimento") && sessao && <Movimento store={store} tipo={modal} sessao={sessao.id} onFechar={() => setModal(null)} onOk={(t) => { setModal(null); setAviso({ tipo: "ok", texto: t }); }} />}
       {modal === "fechar" && sessao && <FecharCaixa store={store} sessao={sessao} eu={eu.id} onFechar={() => setModal(null)} onOk={(t) => { setModal(null); setCarrinho([]); setAviso({ tipo: "ok", texto: t }); carregarSessao(); }} />}
     </main>
@@ -325,7 +366,8 @@ function Produtos({ produtos, onAdd }: { produtos: ProdutoLoja[]; onAdd: (i: Car
 }
 
 /* ---------------- Receber ---------------- */
-function Pagar({ total, onFechar, onConfirmar }: { total: number; onFechar: () => void; onConfirmar: (p: { metodo: Metodo; valor: number }[], recebido?: number) => Promise<string | null> }) {
+function Pagar({ total, cobrarDepois, onFechar, onConfirmar }: { total: number; cobrarDepois: string | null; onFechar: () => void; onConfirmar: (p: { metodo: Metodo; valor: number }[], recebido?: number, formaPrevista?: Metodo) => Promise<string | null> }) {
+  const [depois, setDepois] = useState(!!cobrarDepois);
   const [metodo, setMetodo] = useState<Metodo>("dinheiro");
   const [dividir, setDividir] = useState(false);
   const [metodo2, setMetodo2] = useState<Metodo>("pix");
@@ -334,41 +376,49 @@ function Pagar({ total, onFechar, onConfirmar }: { total: number; onFechar: () =
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
 
-  const v1 = dividir ? Math.min(cents(num(valor1)), total) : total;
+  const dividirOk = dividir && !depois;
+  const v1 = dividirOk ? Math.min(cents(num(valor1)), total) : total;
   const v2 = cents(total - v1);
-  const emDinheiro = (metodo === "dinheiro" ? v1 : 0) + (dividir && metodo2 === "dinheiro" ? v2 : 0);
+  const emDinheiro = (metodo === "dinheiro" ? v1 : 0) + (dividirOk && metodo2 === "dinheiro" ? v2 : 0);
   const rec = num(recebido);
   const troco = rec > 0 ? cents(rec - emDinheiro) : 0;
-  const valido = (!dividir || (v1 > 0 && v2 > 0 && metodo !== metodo2)) && (rec === 0 || troco >= 0);
+  const valido = (!dividirOk || (v1 > 0 && v2 > 0 && metodo !== metodo2)) && (rec === 0 || troco >= 0);
   const sugestoes = Array.from(new Set([emDinheiro, Math.ceil(emDinheiro / 5) * 5, Math.ceil(emDinheiro / 10) * 10, 20, 50, 100].filter((x) => x >= emDinheiro))).slice(0, 5);
 
   async function confirmar() {
     setOcupado(true); setErro("");
-    const pagamentos = dividir ? [{ metodo, valor: v1 }, { metodo: metodo2, valor: v2 }] : [{ metodo, valor: total }];
-    const e = await onConfirmar(pagamentos, emDinheiro > 0 && rec > 0 ? rec : undefined);
+    const pagamentos = depois ? [] : dividirOk ? [{ metodo, valor: v1 }, { metodo: metodo2, valor: v2 }] : [{ metodo, valor: total }];
+    const e = await onConfirmar(pagamentos, emDinheiro > 0 && rec > 0 ? rec : undefined, depois ? metodo : undefined);
     if (e) { setErro(e); setOcupado(false); }
   }
   const Metodos = ({ valor, onChange }: { valor: Metodo; onChange: (m: Metodo) => void }) => <div className="grid grid-cols-4 gap-2">{METODOS.map((m) => <button key={m} aria-pressed={valor === m} onClick={() => onChange(m)} className={chip(valor === m)}>{NOME_METODO[m]}</button>)}</div>;
 
   return (
-    <Janela titulo="Receber" onFechar={onFechar}>
+    <Janela titulo={cobrarDepois ? "Pagamento do pedido" : "Receber"} onFechar={onFechar}>
       <div className="space-y-4">
         <div className="rounded-2xl bg-white p-4 text-center"><div className="text-sm font-bold text-roxo/60">Total</div><div className="text-4xl font-extrabold text-roxo">{brl(total)}</div></div>
+        {cobrarDepois && (
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-white p-1 text-sm" role="radiogroup" aria-label="Quando paga">
+            <button role="radio" aria-checked={depois} onClick={() => setDepois(true)} className={`rounded-lg py-2 font-extrabold ${depois ? "bg-roxo text-white" : "text-roxo"}`}>Cobrar {cobrarDepois}</button>
+            <button role="radio" aria-checked={!depois} onClick={() => setDepois(false)} className={`rounded-lg py-2 font-extrabold ${!depois ? "bg-roxo text-white" : "text-roxo"}`}>Já pagou</button>
+          </div>
+        )}
+        {depois && <p className="text-sm font-semibold text-roxo/70">Como o cliente vai pagar {cobrarDepois}?</p>}
         <Metodos valor={metodo} onChange={setMetodo} />
-        <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={dividir} onChange={(e) => setDividir(e.target.checked)} />Dividir em duas formas</label>
-        {dividir && <>
+        {!depois && <label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={dividir} onChange={(e) => setDividir(e.target.checked)} />Dividir em duas formas</label>}
+        {dividirOk && <>
           <label className="block"><span className="rotulo">Valor em {NOME_METODO[metodo]} (R$)</span><input className="campo" inputMode="decimal" value={valor1} onChange={(e) => setValor1(dinheiroInput(e.target.value))} placeholder="0,00" /></label>
           <div><span className="rotulo">Restante {brl(v2)} em</span><Metodos valor={metodo2} onChange={setMetodo2} /></div>
           {metodo === metodo2 && <p className="text-sm font-semibold text-amber-800">Escolha duas formas diferentes.</p>}
         </>}
         {emDinheiro > 0 && <div>
-          <span className="rotulo">Dinheiro recebido (para o troco)</span>
+          <span className="rotulo">{depois ? "Troco para quanto? (opcional)" : "Dinheiro recebido (para o troco)"}</span>
           <input className="campo text-xl font-extrabold" inputMode="decimal" value={recebido} onChange={(e) => setRecebido(dinheiroInput(e.target.value))} placeholder={brl(emDinheiro)} />
           <div className="mt-2 flex flex-wrap gap-2">{sugestoes.map((s) => <button key={s} onClick={() => setRecebido(s.toFixed(2).replace(".", ","))} className={chip(rec === s)}>{brl(s)}</button>)}</div>
-          {rec > 0 && <div className={`mt-3 rounded-2xl p-3 text-center text-2xl font-extrabold ${troco >= 0 ? "bg-lima/40 text-roxo-escuro" : "bg-red-50 text-red-800"}`}>{troco >= 0 ? `Troco ${brl(troco)}` : `Faltam ${brl(-troco)}`}</div>}
+          {rec > 0 && <div className={`mt-3 rounded-2xl p-3 text-center text-2xl font-extrabold ${troco >= 0 ? "bg-lima/40 text-roxo-escuro" : "bg-red-50 text-red-800"}`}>{troco >= 0 ? (depois ? `Levar ${brl(troco)} de troco` : `Troco ${brl(troco)}`) : `Faltam ${brl(-troco)}`}</div>}
         </div>}
         {erro && <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{erro}</p>}
-        <button className="botao-lima w-full" disabled={!valido || ocupado} onClick={confirmar}>{ocupado ? "Registrando…" : "Confirmar venda"}</button>
+        <button className="botao-lima w-full" disabled={!valido || ocupado} onClick={confirmar}>{ocupado ? "Registrando…" : depois ? "Registrar pedido" : "Confirmar venda"}</button>
       </div>
     </Janela>
   );
@@ -422,6 +472,8 @@ function FecharCaixa({ store, sessao, eu, onFechar, onOk }: { store: CaixaStore;
             <L a={`Vendas no balcão (${r.balcao_qtd})`} b={brl(r.balcao_total)} forte />
             {METODOS.map((m) => Number(r.por_metodo[m] ?? 0) > 0 && <L key={m} a={`· ${NOME_METODO[m]}`} b={brl(r.por_metodo[m])} />)}
             <L a={`Pedidos do site (${r.site_qtd})`} b={brl(r.site_total)} forte />
+            {Number(r.entregas_qtd) > 0 && <L a={`Entregas (${r.entregas_qtd}) · taxas`} b={brl(Number(r.taxas_entrega))} />}
+            {Number(r.a_receber) > 0 && <L a="⚠ Pedidos ainda a receber" b={brl(Number(r.a_receber))} forte />}
           </div>
           <div className="space-y-1 rounded-2xl bg-white p-4">
             <L a="Troco inicial" b={brl(r.abertura)} />

@@ -10,10 +10,10 @@ import LojaConfig from "./LojaConfig";
 import Relatorios from "./Relatorios";
 
 const ABAS = [
-  { id: "esgotado", nome: "Esgotado hoje", gerente: false },
-  { id: "cardapio", nome: "Cardápio e preços", gerente: true },
-  { id: "loja", nome: "Loja e entrega", gerente: true },
-  { id: "relatorios", nome: "Relatórios", gerente: true },
+  { id: "esgotado", nome: "Esgotado hoje" },
+  { id: "cardapio", nome: "Cardápio e preços" },
+  { id: "loja", nome: "Loja e entrega" },
+  { id: "relatorios", nome: "Relatórios" },
 ] as const;
 
 export default function Painel() {
@@ -32,8 +32,9 @@ export default function Painel() {
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return <main className="grid min-h-dvh place-items-center p-6 text-center">O painel precisa do banco de dados (Supabase) configurado.</main>;
   if (!eu || !dados) return <main className="grid min-h-dvh place-items-center text-roxo">{aviso?.texto ?? "Carregando…"}</main>;
-  const gerente = eu.funcao !== "atendente";
-  const abas = ABAS.filter((a) => gerente || !a.gerente);
+  const abas = ABAS.filter((a) => eu.pode[a.id]);
+  if (!abas.length) return <main className="grid min-h-dvh place-items-center p-6 text-center"><div className="space-y-3"><p className="font-semibold">Você ainda não tem acesso a nenhuma parte do painel.</p><Link href="/balcao" className="botao">Voltar aos pedidos</Link></div></main>;
+  const atual = abas.some((a) => a.id === aba) ? aba : abas[0].id;
 
   return (
     <main className="min-h-dvh bg-creme pb-24">
@@ -43,20 +44,20 @@ export default function Painel() {
           <span className="font-extrabold">Painel</span>
           <div className="ml-auto flex gap-2">
             <Link href="/balcao" className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Pedidos</Link>
-            <Link href="/balcao/caixa" className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Caixa</Link>
+            {eu.pode.caixa && <Link href="/balcao/caixa" className="rounded-full bg-white/15 px-3 py-1.5 font-bold">Caixa</Link>}
             <Link href="/" target="_blank" className="rounded-full bg-lima px-3 py-1.5 font-extrabold text-roxo-escuro">Ver site ↗</Link>
           </div>
         </div>
         <div role="tablist" className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 pb-3">
-          {abas.map((a) => <button key={a.id} role="tab" aria-selected={aba === a.id} onClick={() => setAba(a.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${aba === a.id ? "bg-white text-roxo" : "bg-white/15 text-white"}`}>{a.nome}</button>)}
+          {abas.map((a) => <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => setAba(a.id)} className={`shrink-0 rounded-full px-4 py-2 text-sm font-extrabold ${atual === a.id ? "bg-white text-roxo" : "bg-white/15 text-white"}`}>{a.nome}</button>)}
         </div>
       </header>
 
       <div className="mx-auto max-w-5xl space-y-4 px-4 pt-4">
-        {aba === "esgotado" && <Esgotado dados={dados} avisar={avisar} recarregar={recarregar} />}
-        {aba === "cardapio" && gerente && <Cardapio dados={dados} avisar={avisar} recarregar={recarregar} />}
-        {aba === "loja" && gerente && <LojaConfig dados={dados} avisar={avisar} recarregar={recarregar} />}
-        {aba === "relatorios" && gerente && <Relatorios avisar={avisar} />}
+        {atual === "esgotado" && <Esgotado dados={dados} avisar={avisar} recarregar={recarregar} />}
+        {atual === "cardapio" && <Cardapio dados={dados} avisar={avisar} recarregar={recarregar} />}
+        {atual === "loja" && <LojaConfig dados={dados} avisar={avisar} recarregar={recarregar} />}
+        {atual === "relatorios" && <Relatorios avisar={avisar} />}
       </div>
 
       {aviso && (

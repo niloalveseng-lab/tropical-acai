@@ -35,7 +35,13 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 - `src/lib/pagamento/` — PIX (QR Code na página do pedido) e cartão (Checkout Pro), confirmação por webhook `/api/mp/webhook` e por conferência na API.
 - O pedido fica `aguardando_pagamento` e só aparece no balcão depois de aprovado; expira em 30 min.
 - Liga sozinho quando `MP_ACCESS_TOKEN` existe na Vercel. `MP_WEBHOOK_SECRET` é opcional.
-- Ainda não testado com pagamento real.
+- Testado em produção com PIX real.
+
+**Fase 6 — entregas pelo caixa, lista de pedidos e acessos por pessoa**
+- Caixa: canal Balcão/WhatsApp e tipo Na loja/Retirada/Entrega. O local da entrega vem de link/coordenadas colados, busca de endereço (`/api/geo`, Nominatim limitado a Sousa) ou toque no mapa; a taxa usa as mesmas faixas do site e fica gravada no pedido. “Cobrar na entrega” com troco.
+- `/balcao`: pedidos em lista (#, hora, tempo de espera, ação na linha, detalhes ao abrir), filtros, busca, “A receber”, campo Entregador e aba **Dias anteriores** com totais do dia.
+- `/balcao/equipe`: liga/desliga por pessoa — caixa, cancelar, esgotado, dias anteriores, relatórios, cardápio, loja. Aplicado no banco (`pode()`), não só na tela.
+- `supabase/migrations/0008_permissoes_entregas.sql` — `staff.permissoes`, `pode()`, `minhas_permissoes()`, `orders.entregador`, a receber e entregas no caixa e nos relatórios.
 
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
 Gravação de pedidos no Supabase testada em produção (Vercel).

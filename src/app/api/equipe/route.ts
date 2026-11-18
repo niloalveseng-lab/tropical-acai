@@ -15,7 +15,7 @@ function falha(e: unknown) {
 export async function GET() {
   try {
     await exigirDono();
-    const { data, error } = await admin().from("staff").select("user_id,nome,email,role,ativo,created_at").order("ativo", { ascending: false }).order("role").order("nome");
+    const { data, error } = await admin().from("staff").select("user_id,nome,email,role,ativo,permissoes,created_at").order("ativo", { ascending: false }).order("role").order("nome");
     if (error) throw error;
     return NextResponse.json({ equipe: data });
   } catch (e) { return falha(e); }
@@ -46,7 +46,13 @@ export async function POST(req: Request) {
   } catch (e) { return falha(e); }
 }
 
-const alterarSchema = z.object({ user_id: z.string().uuid(), funcao: z.enum(FUNCOES).optional(), senha: z.string().min(8, "A senha precisa de pelo menos 8 caracteres").max(72).optional() });
+const PERMISSOES = ["caixa", "cancelar", "esgotado", "historico", "relatorios", "cardapio", "loja"] as const;
+const alterarSchema = z.object({
+  user_id: z.string().uuid(), funcao: z.enum(FUNCOES).optional(),
+  senha: z.string().min(8, "A senha precisa de pelo menos 8 caracteres").max(72).optional(),
+  // Ajustes individuais; null volta ao padrão da função.
+  permissoes: z.record(z.enum(PERMISSOES), z.boolean()).nullable().optional(),
+});
 
 /** Muda função ou define nova senha. */
 export async function PATCH(req: Request) {
@@ -55,7 +61,8 @@ export async function PATCH(req: Request) {
     const m = alterarSchema.parse(await req.json());
     if (m.user_id === dono) throw new AcessoNegado("Para trocar a sua senha use “Esqueci a senha” no login.");
     const sb = admin();
-    if (m.funcao) { const { error } = await sb.from("staff").update({ role: m.funcao }).eq("user_id", m.user_id).neq("role", "dono"); if (error) throw error; }
+    if (m.funcao) { const { error } = await sb.from("staff").update({ role: m.funcao, permissoes: {} }).eq("user_id", m.user_id).neq("role", "dono"); if (error) throw error; }
+    if (m.permissoes !== undefined) { const { error } = await sb.from("staff").update({ permissoes: m.permissoes ?? {} }).eq("user_id", m.user_id).neq("role", "dono"); if (error) throw error; }
     if (m.senha) { const { error } = await sb.auth.admin.updateUserById(m.user_id, { password: m.senha }); if (error) throw error; }
     return NextResponse.json({ ok: true });
   } catch (e) { return falha(e); }

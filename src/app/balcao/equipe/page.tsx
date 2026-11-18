@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-type Membro = { user_id: string; nome: string; email: string | null; role: "dono" | "gerente" | "atendente"; ativo: boolean };
+import { efetiva, padrao, PERMISSOES, type Permissao } from "@/lib/equipe/permissoes";
+
+type Membro = { user_id: string; nome: string; email: string | null; role: "dono" | "gerente" | "atendente"; ativo: boolean; permissoes: Partial<Record<Permissao, boolean>> | null };
 const NOME_FUNCAO = { dono: "Dono", gerente: "Gerente", atendente: "Atendente" } as const;
 
 async function api(metodo: string, corpo?: unknown, query = "") {
@@ -57,8 +59,8 @@ export default function Equipe() {
             </label>
             <label><span className="rotulo">Função</span>
               <select className="campo" value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value as "atendente" | "gerente" })}>
-                <option value="atendente">Atendente — vê e atualiza pedidos</option>
-                <option value="gerente">Gerente — pedidos + cardápio e preços</option>
+                <option value="atendente">Atendente — pedidos, caixa e esgotado</option>
+                <option value="gerente">Gerente — tudo, menos a equipe</option>
               </select>
             </label>
           </div>
@@ -71,23 +73,26 @@ export default function Equipe() {
           {!equipe ? <p>Carregando…</p> : (
             <ul className="divide-y divide-roxo/10">
               {equipe.map((m) => (
-                <li key={m.user_id} className={`flex flex-wrap items-center gap-2 py-3 ${m.ativo ? "" : "opacity-50"}`}>
-                  <div className="min-w-0 flex-1"><div className="font-bold">{m.nome}{!m.ativo && " (bloqueado)"}</div><div className="truncate text-sm text-roxo/60">{m.email}</div></div>
-                  {m.role === "dono" ? <span className="rounded-full bg-roxo px-3 py-1 text-xs font-extrabold text-white">Dono</span> : (
-                    <>
-                      <select aria-label={`Função de ${m.nome}`} className="rounded-full bg-roxo/10 px-3 py-1.5 text-sm font-bold text-roxo" value={m.role}
-                        onChange={(e) => acao(() => api("PATCH", { user_id: m.user_id, funcao: e.target.value }), "Função alterada.")}>
-                        <option value="atendente">{NOME_FUNCAO.atendente}</option><option value="gerente">{NOME_FUNCAO.gerente}</option>
-                      </select>
-                      <button className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-bold" onClick={() => {
-                        const s = prompt(`Nova senha para ${m.nome} (mínimo 8 caracteres):`);
-                        if (s) acao(() => api("PATCH", { user_id: m.user_id, senha: s }), "Senha alterada.");
-                      }}>Nova senha</button>
-                      <button className="rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700" onClick={() => {
-                        if (confirm(`Remover o acesso de ${m.nome}? Ele(a) não conseguirá mais entrar.`)) acao(() => api("DELETE", undefined, `?id=${m.user_id}`), `${m.nome} removido(a).`);
-                      }}>Remover</button>
-                    </>
-                  )}
+                <li key={m.user_id} className={`py-3 ${m.ativo ? "" : "opacity-50"}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0 flex-1"><div className="font-bold">{m.nome}{!m.ativo && " (bloqueado)"}</div><div className="truncate text-sm text-roxo/60">{m.email}</div></div>
+                    {m.role === "dono" ? <span className="rounded-full bg-roxo px-3 py-1 text-xs font-extrabold text-white">Dono · acesso total</span> : (
+                      <>
+                        <select aria-label={`Função de ${m.nome}`} className="rounded-full bg-roxo/10 px-3 py-1.5 text-sm font-bold text-roxo" value={m.role}
+                          onChange={(e) => acao(() => api("PATCH", { user_id: m.user_id, funcao: e.target.value }), "Função alterada. As permissões voltaram ao padrão da função.")}>
+                          <option value="atendente">{NOME_FUNCAO.atendente}</option><option value="gerente">{NOME_FUNCAO.gerente}</option>
+                        </select>
+                        <button className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-bold" onClick={() => {
+                          const s = prompt(`Nova senha para ${m.nome} (mínimo 8 caracteres):`);
+                          if (s) acao(() => api("PATCH", { user_id: m.user_id, senha: s }), "Senha alterada.");
+                        }}>Nova senha</button>
+                        <button className="rounded-full bg-red-50 px-3 py-1.5 text-sm font-bold text-red-700" onClick={() => {
+                          if (confirm(`Remover o acesso de ${m.nome}? Ele(a) não conseguirá mais entrar.`)) acao(() => api("DELETE", undefined, `?id=${m.user_id}`), `${m.nome} removido(a).`);
+                        }}>Remover</button>
+                      </>
+                    )}
+                  </div>
+                  {m.role !== "dono" && m.ativo && <Acessos m={m} onMudar={(ajustes, texto) => acao(() => api("PATCH", { user_id: m.user_id, permissoes: ajustes }), texto)} />}
                 </li>
               ))}
             </ul>
@@ -95,5 +100,39 @@ export default function Equipe() {
         </section>
       </div>
     </main>
+  );
+}
+
+/** Chaves de acesso de uma pessoa. Ligado/desligado diferente do padrão da função fica marcado como ajuste. */
+function Acessos({ m, onMudar }: { m: Membro; onMudar: (ajustes: Partial<Record<Permissao, boolean>> | null, texto: string) => void }) {
+  const funcao = m.role as "gerente" | "atendente";
+  const ajustes = m.permissoes ?? {};
+  const temAjuste = PERMISSOES.some((p) => ajustes[p.id] !== undefined && ajustes[p.id] !== padrao(funcao, p.id));
+  function alternar(p: Permissao, nome: string) {
+    const novo = !efetiva(funcao, ajustes, p);
+    const proximo: Partial<Record<Permissao, boolean>> = { ...ajustes, [p]: novo };
+    if (novo === padrao(funcao, p)) delete proximo[p]; // igual ao padrão: não precisa guardar
+    onMudar(proximo, `${m.nome}: ${nome} ${novo ? "liberado" : "bloqueado"}.`);
+  }
+  return (
+    <div className="mt-3 rounded-2xl bg-creme p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-bold text-roxo/70">
+        <span className="flex-1">O que {m.nome.split(" ")[0]} pode fazer</span>
+        {temAjuste && <button onClick={() => onMudar(null, `${m.nome}: acessos voltaram ao padrão de ${NOME_FUNCAO[funcao].toLowerCase()}.`)} className="underline">Voltar ao padrão</button>}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {PERMISSOES.map((p) => {
+          const on = efetiva(funcao, ajustes, p.id);
+          const ajustado = ajustes[p.id] !== undefined && ajustes[p.id] !== padrao(funcao, p.id);
+          return (
+            <label key={p.id} className="flex cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5">
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-roxo" checked={on} onChange={() => alternar(p.id, p.nome)} />
+              <span className="min-w-0 text-sm"><span className="font-bold">{p.nome}</span>{ajustado && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-extrabold text-amber-900">ajustado</span>}
+                <span className="block text-xs text-roxo/60">{p.descricao}</span></span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
   );
 }
