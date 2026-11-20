@@ -2,6 +2,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { lerConfigSom, REPETICOES, salvarConfigSom, tocarTom, TONS, type ConfigSom, type Tom } from "@/lib/pedidos/som";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabaseNavegador } from "@/lib/supabase/client";
@@ -13,19 +14,6 @@ import { brl, CAMPOS, hora, imprimir, linkMapa, linkWhatsApp, PAGAMENTO, papelSa
 function inicioDoDia() {
   const d = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Fortaleza", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   return new Date(`${d}T00:00:00-03:00`).toISOString();
-}
-
-/** Campainha gerada no navegador (sem arquivo de áudio). */
-function tocar(ctx: AudioContext) {
-  const t = ctx.currentTime;
-  [0, 0.18, 0.36].forEach((dt, i) => {
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = "sine"; o.frequency.value = [880, 1175, 1568][i];
-    g.gain.setValueAtTime(0.0001, t + dt);
-    g.gain.exponentialRampToValueAtTime(0.5, t + dt + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.25);
-    o.connect(g).connect(ctx.destination); o.start(t + dt); o.stop(t + dt + 0.3);
-  });
 }
 
 const COR: Record<Status, string> = {
@@ -53,7 +41,9 @@ export default function Balcao() {
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<string | null>(null);
   const [conexao, setConexao] = useState<"ok" | "caiu" | "...">("...");
-  const [som, setSom] = useState(false);
+  const [cfgSom, setCfgSom] = useState<ConfigSom | null>(null);
+  const [somLiberado, setSomLiberado] = useState(false);
+  const [painelSom, setPainelSom] = useState(false);
   const [erro, setErro] = useState("");
   const audio = useRef<AudioContext | null>(null);
   const vistos = useRef<Set<string> | null>(null);
@@ -69,7 +59,7 @@ export default function Balcao() {
     // Toca quando aparece um pedido novo que ainda não tinha sido visto.
     if (vistos.current) {
       const chegou = lista.some((p) => p.status === "novo" && !vistos.current!.has(p.id));
-      if (chegou && audio.current) tocar(audio.current);
+      if (chegou) tocarRef.current();
     }
     vistos.current = new Set(lista.map((p) => p.id));
     setPedidos(lista);
@@ -100,19 +90,47 @@ export default function Balcao() {
     return () => { sb().removeChannel(canal); clearInterval(t); document.removeEventListener("visibilitychange", volta); };
   }, [eu, sb, carregar]);
 
-  // Enquanto houver pedido "Novo" sem aceitar, a campainha repete a cada 20 s.
+  // Som: configuração deste aparelho; o navegador só libera áudio depois de um toque na página.
+  useEffect(() => { setCfgSom(lerConfigSom()); }, []);
+  const tocar = useCallback((forcar = false) => {
+    const c = cfgSom;
+    if (!c || (!c.ligado && !forcar) || !audio.current) return;
+    if (audio.current.state !== "running") audio.current.resume().catch(() => {});
+    tocarTom(audio.current, c.tom, c.volume);
+  }, [cfgSom]);
+  const tocarRef = useRef(tocar);
+  useEffect(() => { tocarRef.current = tocar; }, [tocar]);
+  useEffect(() => {
+    if (!cfgSom?.ligado) return;
+    try { audio.current ??= new AudioContext(); } catch { return; }
+    const ctx = audio.current;
+    const liberar = () => ctx.resume().then(() => setSomLiberado(ctx.state === "running")).catch(() => {});
+    if (ctx.state === "running") setSomLiberado(true); else liberar();
+    // Qualquer toque na página libera o som (não precisa achar um botão).
+    window.addEventListener("pointerdown", liberar);
+    window.addEventListener("keydown", liberar);
+    return () => { window.removeEventListener("pointerdown", liberar); window.removeEventListener("keydown", liberar); };
+  }, [cfgSom?.ligado]);
+  function mudarSom(c: ConfigSom) { setCfgSom(c); salvarConfigSom(c); }
+
+  // Tela sempre acesa (tablet/celular no balcão).
+  useEffect(() => {
+    if (!cfgSom?.telaAcesa || !("wakeLock" in navigator)) return;
+    let trava: WakeLockSentinel | null = null;
+    const pedir = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { trava = t; }).catch(() => {}); };
+    pedir();
+    document.addEventListener("visibilitychange", pedir);
+    return () => { document.removeEventListener("visibilitychange", pedir); trava?.release().catch(() => {}); };
+  }, [cfgSom?.telaAcesa]);
+
+  // Enquanto houver pedido "Novo" sem aceitar, a campainha repete no intervalo escolhido.
   const novos = pedidos.filter((p) => p.status === "novo").length;
   useEffect(() => {
     document.title = novos ? `(${novos}) Novo pedido · Balcão` : "Balcão · Tropical Açaí";
-    if (!novos || !som) return;
-    const t = setInterval(() => audio.current && tocar(audio.current), 20_000);
+    if (!novos || !cfgSom?.ligado || !cfgSom.repetir) return;
+    const t = setInterval(() => tocarRef.current(), cfgSom.repetir * 1000);
     return () => clearInterval(t);
-  }, [novos, som]);
-
-  function ativarSom() {
-    audio.current ??= new AudioContext();
-    audio.current.resume(); tocar(audio.current); setSom(true);
-  }
+  }, [novos, cfgSom?.ligado, cfgSom?.repetir]);
 
   const atualizar: Atualizar = async (p, campos) => {
     setPedidos((l) => l.map((x) => (x.id === p.id ? { ...x, ...campos } : x)));
@@ -155,6 +173,7 @@ export default function Balcao() {
             <Link href="/balcao/painel?aba=lista" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">🛒 Lista</Link>
             <Link href="/balcao/painel" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Painel</Link>
             {eu.pode.equipe && <Link href="/balcao/equipe" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Equipe</Link>}
+            <button onClick={() => setPainelSom((x) => !x)} aria-expanded={painelSom} aria-label="Som de novos pedidos" className={`rounded-full px-3 py-1.5 font-bold ${cfgSom?.ligado ? "bg-white/15 hover:bg-white/25" : "bg-red-500/80"}`}>{cfgSom?.ligado ? "🔔" : "🔕"} Som</button>
             <SeletorPapel />
             <button onClick={sair} className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Sair</button>
           </div>
@@ -162,9 +181,10 @@ export default function Balcao() {
       </header>
 
       <div className="mx-auto max-w-6xl px-4">
-        {!som && (
-          <button onClick={ativarSom} className="mt-4 w-full rounded-2xl bg-amber-400 px-4 py-3 text-left font-extrabold text-amber-950 shadow">
-            🔔 Toque aqui para ativar o som de novos pedidos <span className="block text-sm font-semibold">O navegador só permite som depois de um toque. Deixe esta página aberta.</span>
+        {painelSom && cfgSom && <PainelSom cfg={cfgSom} onMudar={mudarSom} testar={(c) => { try { audio.current ??= new AudioContext(); audio.current.resume(); tocarTom(audio.current, c.tom, c.volume); setSomLiberado(true); } catch { /* sem áudio */ } }} onFechar={() => setPainelSom(false)} />}
+        {cfgSom?.ligado && !somLiberado && (
+          <button onClick={() => tocar(true)} className="mt-4 w-full rounded-2xl bg-amber-400 px-4 py-3 text-left font-extrabold text-amber-950 shadow">
+            🔔 Toque em qualquer lugar da tela para ligar o som <span className="block text-sm font-semibold">O navegador só libera som depois do primeiro toque. Depois disso fica ligado enquanto a página estiver aberta.</span>
           </button>
         )}
         {erro && <p role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">{erro}</p>}
@@ -359,5 +379,46 @@ function SeletorPapel() {
         <option value={80}>80 mm</option>
       </select>
     </label>
+  );
+}
+
+function PainelSom({ cfg, onMudar, testar, onFechar }: { cfg: ConfigSom; onMudar: (c: ConfigSom) => void; testar: (c: ConfigSom) => void; onFechar: () => void }) {
+  const mudar = (p: Partial<ConfigSom>) => onMudar({ ...cfg, ...p });
+  return (
+    <section aria-label="Configurar som" className="mt-4 space-y-4 rounded-3xl bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-2">
+        <h2 className="flex-1 text-lg font-extrabold text-roxo">Som de novos pedidos</h2>
+        <button onClick={onFechar} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-bold">Fechar</button>
+      </div>
+      <label className="flex items-center gap-3 rounded-2xl bg-creme p-3 font-bold">
+        <input type="checkbox" className="h-6 w-6 accent-roxo" checked={cfg.ligado} onChange={(e) => mudar({ ligado: e.target.checked })} />
+        <span className="flex-1">Som ligado<span className="block text-xs font-semibold text-roxo/60">Fica salvo neste aparelho. Desligue em aparelhos que não ficam no balcão.</span></span>
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block"><span className="rotulo">Volume: {cfg.volume}%</span>
+          <input type="range" min={5} max={100} step={5} value={cfg.volume} onChange={(e) => mudar({ volume: Number(e.target.value) })} onPointerUp={() => testar(cfg)} className="mt-2 w-full accent-roxo" aria-label="Volume" />
+        </label>
+        <label className="block"><span className="rotulo">Repetir enquanto o pedido não for aceito</span>
+          <select className="campo" value={cfg.repetir} onChange={(e) => mudar({ repetir: Number(e.target.value) })}>
+            {REPETICOES.map((r) => <option key={r} value={r}>{r ? `A cada ${r} segundos` : "Não repetir (toca uma vez)"}</option>)}
+          </select>
+        </label>
+      </div>
+      <div>
+        <span className="rotulo">Tom</span>
+        <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {TONS.map((t) => (
+            <button key={t.id} aria-pressed={cfg.tom === t.id} onClick={() => { const c = { ...cfg, tom: t.id as Tom }; onMudar(c); testar(c); }}
+              className={`rounded-2xl border-2 px-3 py-2.5 text-left text-sm font-bold ${cfg.tom === t.id ? "border-roxo bg-roxo text-white" : "border-roxo/10 bg-creme text-roxo"}`}>▶ {t.nome}</button>
+          ))}
+        </div>
+      </div>
+      <label className="flex items-center gap-3 text-sm font-semibold">
+        <input type="checkbox" className="h-5 w-5 accent-roxo" checked={cfg.telaAcesa} onChange={(e) => mudar({ telaAcesa: e.target.checked })} />
+        Manter a tela sempre acesa nesta página
+      </label>
+      <button onClick={() => testar(cfg)} className="botao w-full sm:w-auto">🔔 Testar som</button>
+      <p className="text-xs text-roxo/60">Confira também se o volume do computador/celular não está no mudo.</p>
+    </section>
   );
 }

@@ -11,7 +11,7 @@ type Fixa = { id: string; descricao: string; categoria: string; valor: number; d
 type Taxa = { forma: string; nome: string; percentual: number; ordem: number };
 type Externa = { id: string; data: string; canal: string; bruto: number; liquido: number; obs: string | null };
 type Resultado = {
-  vendas_sistema: number; pedidos: number; ticket_medio: number; taxas_cartao: number; externas_bruto: number; externas_liquido: number;
+  vendas_sistema: number; vendas_caderno?: number; dias_caderno?: number; pedidos: number; ticket_medio: number; taxas_cartao: number; externas_bruto: number; externas_liquido: number;
   compras: number; despesas: number; contas_abertas: number; devido_aos_donos: number;
   por_canal: { canal: string; total: number; pedidos: number }[];
   por_forma: { forma: string; total: number; percentual: number; taxa: number }[];
@@ -24,7 +24,7 @@ const somaMes = (mes: string, n: number) => { const [a, m] = mes.split("-").map(
 const nomeMes = (mes: string) => `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}`;
 const titulo = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const diasAte = (hoje: string, d: string) => Math.round((Date.parse(d + "T12:00:00Z") - Date.parse(hoje + "T12:00:00Z")) / 864e5);
-const CANAL: Record<string, string> = { site: "Site", balcao: "Balcão", whatsapp: "WhatsApp" };
+const CANAL: Record<string, string> = { site: "Site", balcao: "Balcão", whatsapp: "WhatsApp", caderno: "Caderno" };
 const v2 = (n: number) => String(Number(n).toFixed(2)).replace(".", ",");
 
 export default function Financeiro({ avisar }: { avisar: Aviso }) {
@@ -59,7 +59,8 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
   if (!r) return <p className="py-10 text-center font-semibold text-roxo/60">Carregando…</p>;
 
   const comissaoIfood = Number(r.externas_bruto) - Number(r.externas_liquido);
-  const receita = Number(r.vendas_sistema) + Number(r.externas_bruto);
+  const caderno = Number(r.vendas_caderno ?? 0);
+  const receita = Number(r.vendas_sistema) + caderno + Number(r.externas_bruto);
   const resultado = receita - Number(r.taxas_cartao) - comissaoIfood - Number(r.compras) - Number(r.despesas);
   const pctCompras = receita > 0 ? (Number(r.compras) / receita) * 100 : 0;
   const abertas = contas.filter((c) => !c.pago_em);
@@ -133,7 +134,7 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
 
       {aba === "resumo" && <>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {[["Vendas", brl(receita), `${r.pedidos} pedidos no sistema${Number(r.externas_bruto) ? " + iFood" : ""}`],
+          {[["Vendas", brl(receita), `${r.pedidos} pedidos no sistema${caderno ? ` + ${r.dias_caderno} dia(s) do caderno` : ""}${Number(r.externas_bruto) ? " + iFood" : ""}`],
             ["Compras", brl(r.compras), `${pctCompras.toFixed(0)}% das vendas`],
             ["Despesas fixas", brl(r.despesas), "aluguel, energia, salário…"],
             [mesAtual ? "Resultado até agora" : "Resultado do mês", brl(resultado), mesAtual ? "o mês ainda não fechou" : "fechado"]].map(([a, b, c], i) => (
@@ -144,6 +145,7 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
         <Cartao titulo="Como chegou nesse resultado">
           <table className="w-full text-sm"><tbody className="divide-y divide-roxo/10">
             <tr><td className="py-1.5">Vendas no sistema (balcão, site, WhatsApp)</td><td className="text-right font-bold">{brl(r.vendas_sistema)}</td></tr>
+            {caderno > 0 && <tr><td className="py-1.5">Vendas anotadas no caderno ({r.dias_caderno} dia(s) antes do sistema)</td><td className="text-right font-bold">{brl(caderno)}</td></tr>}
             {Number(r.externas_bruto) > 0 && <tr><td className="py-1.5">Vendas iFood (bruto)</td><td className="text-right font-bold">{brl(r.externas_bruto)}</td></tr>}
             <tr className="text-red-800"><td className="py-1.5">− Taxas da maquininha e do site</td><td className="text-right font-bold">{brl(r.taxas_cartao)}</td></tr>
             {comissaoIfood > 0 && <tr className="text-red-800"><td className="py-1.5">− Comissão e taxas iFood</td><td className="text-right font-bold">{brl(comissaoIfood)}</td></tr>}
