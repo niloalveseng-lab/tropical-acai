@@ -46,13 +46,21 @@ Next.js 14 (App Router) · Supabase (Postgres, Auth, Storage, Realtime) · Merca
 Sem `NEXT_PUBLIC_SUPABASE_URL` o site usa `src/data/cardapio-demo.ts` e os pedidos **não chegam à loja**.
 Gravação de pedidos no Supabase testada em produção (Vercel).
 
+**Fase 7 — estoque e financeiro (painel: Lista de compras, Compras, Estoque, Financeiro)**
+- Lista de compras: toda a equipe marca o que está acabando; agrupa por frequência e envia pelo WhatsApp.
+- Compras: foto/PDF do comprovante → `/api/compras/ler` (Claude, precisa de `ANTHROPIC_API_KEY`) → conferência → `registrar_compra()` (estoque, custo, boleto em contas a pagar, sangria opcional, “de-para” aprendido em `insumo_apelidos`). Comprovantes no bucket privado `comprovantes`.
+- Estoque: contagem, perda, mínimo, histórico de movimentos.
+- Financeiro: resultado do mês (vendas − taxas da maquininha − iFood − compras − despesas), contas a pagar com despesas fixas geradas todo mês, repasses do iFood, “a loja deve a vocês”.
+- Permissão `financeiro`: só o dono por padrão; liga por pessoa em Equipe.
+- `supabase/migrations/0009_estoque_financeiro.sql`.
+
 ## Rodar
 ```bash
 npm install
 npm test          # testes de preço e balança
 npm run dev
 ```
-Variáveis (`.env.local`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`.
+Variáveis (`.env.local`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY` (leitura de comprovantes; opcional `ANTHROPIC_MODEL`).
 
 ## Próximas fases
 4. PDV de balcão: caixa, venda rápida, balança, impressão, modo sem internet.

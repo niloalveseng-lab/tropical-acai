@@ -7,13 +7,15 @@ export const PERMISSOES = [
   { id: "relatorios", nome: "Relatórios", descricao: "Faturamento, mais vendidos, caixas e entregas" },
   { id: "cardapio", nome: "Cardápio e preços", descricao: "Preços, itens, fotos e promoções" },
   { id: "loja", nome: "Loja e entrega", descricao: "Horários, taxas de entrega, local e contato" },
+  { id: "financeiro", nome: "Financeiro e estoque", descricao: "Compras, estoque, contas a pagar e resultado do mês" },
 ] as const;
 
 export type Permissao = (typeof PERMISSOES)[number]["id"];
 export type Funcao = "dono" | "gerente" | "atendente";
 
 /** Padrão de cada função (igual a permissao_padrao() no banco). */
-export const padrao = (funcao: Funcao, p: Permissao) => funcao !== "atendente" || p === "caixa" || p === "cancelar" || p === "esgotado";
+export const padrao = (funcao: Funcao, p: Permissao) =>
+  funcao === "dono" || (p !== "financeiro" && (funcao === "gerente" || p === "caixa" || p === "cancelar" || p === "esgotado"));
 
 /** Permissão efetiva: ajuste individual, senão o padrão da função. Dono pode tudo. */
 export const efetiva = (funcao: Funcao, ajustes: Partial<Record<string, boolean>> | null | undefined, p: Permissao) =>

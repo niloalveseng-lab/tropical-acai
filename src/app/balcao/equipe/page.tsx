@@ -60,7 +60,7 @@ export default function Equipe() {
             <label><span className="rotulo">Função</span>
               <select className="campo" value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value as "atendente" | "gerente" })}>
                 <option value="atendente">Atendente — pedidos, caixa e esgotado</option>
-                <option value="gerente">Gerente — tudo, menos a equipe</option>
+                <option value="gerente">Gerente — tudo, menos equipe e financeiro</option>
               </select>
             </label>
           </div>

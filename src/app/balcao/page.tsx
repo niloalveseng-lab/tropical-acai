@@ -152,6 +152,7 @@ export default function Balcao() {
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
             {eu.pode.caixa && <Link href="/balcao/caixa" className="rounded-full bg-lima px-3 py-1.5 font-extrabold text-roxo-escuro">Caixa</Link>}
+            <Link href="/balcao/painel?aba=lista" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">🛒 Lista</Link>
             <Link href="/balcao/painel" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Painel</Link>
             {eu.pode.equipe && <Link href="/balcao/equipe" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Equipe</Link>}
             <SeletorPapel />

@@ -8,13 +8,24 @@ import Esgotado from "./Esgotado";
 import Cardapio from "./Cardapio";
 import LojaConfig from "./LojaConfig";
 import Relatorios from "./Relatorios";
+import Lista from "./Lista";
+import Compras from "./Compras";
+import Estoque from "./Estoque";
+import Financeiro from "./Financeiro";
 
 const ABAS = [
   { id: "esgotado", nome: "Esgotado hoje" },
   { id: "cardapio", nome: "Cardápio e preços" },
   { id: "loja", nome: "Loja e entrega" },
+  { id: "lista", nome: "Lista de compras" },
+  { id: "compras", nome: "Compras" },
+  { id: "estoque", nome: "Estoque" },
+  { id: "financeiro", nome: "Financeiro" },
   { id: "relatorios", nome: "Relatórios" },
 ] as const;
+
+/** Qual permissão libera cada aba. A lista de compras é de toda a equipe. */
+const PERMISSAO_DA_ABA: Record<string, string | null> = { lista: null, compras: "financeiro", estoque: "financeiro", financeiro: "financeiro" };
 
 export default function Painel() {
   const eu = useEquipe();
@@ -29,10 +40,14 @@ export default function Painel() {
   }, []);
   const recarregar = useCallback(() => carregarDados().then(setDados, (e) => avisar("erro", (e as Error).message)), [avisar]);
   useEffect(() => { if (eu) recarregar(); }, [eu, recarregar]);
+  useEffect(() => { // /balcao/painel?aba=lista abre direto na aba
+    const a = new URLSearchParams(window.location.search).get("aba");
+    if (a && ABAS.some((x) => x.id === a)) setAba(a as (typeof ABAS)[number]["id"]);
+  }, []);
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return <main className="grid min-h-dvh place-items-center p-6 text-center">O painel precisa do banco de dados (Supabase) configurado.</main>;
   if (!eu || !dados) return <main className="grid min-h-dvh place-items-center text-roxo">{aviso?.texto ?? "Carregando…"}</main>;
-  const abas = ABAS.filter((a) => eu.pode[a.id]);
+  const abas = ABAS.filter((a) => { const p = a.id in PERMISSAO_DA_ABA ? PERMISSAO_DA_ABA[a.id] : a.id; return p === null || eu.pode[p]; });
   if (!abas.length) return <main className="grid min-h-dvh place-items-center p-6 text-center"><div className="space-y-3"><p className="font-semibold">Você ainda não tem acesso a nenhuma parte do painel.</p><Link href="/balcao" className="botao">Voltar aos pedidos</Link></div></main>;
   const atual = abas.some((a) => a.id === aba) ? aba : abas[0].id;
 
@@ -58,6 +73,10 @@ export default function Painel() {
         {atual === "cardapio" && <Cardapio dados={dados} avisar={avisar} recarregar={recarregar} />}
         {atual === "loja" && <LojaConfig dados={dados} avisar={avisar} recarregar={recarregar} />}
         {atual === "relatorios" && <Relatorios avisar={avisar} />}
+        {atual === "lista" && <Lista avisar={avisar} euId={eu.id} financeiro={!!eu.pode.financeiro} />}
+        {atual === "compras" && <Compras avisar={avisar} />}
+        {atual === "estoque" && <Estoque avisar={avisar} />}
+        {atual === "financeiro" && <Financeiro avisar={avisar} />}
       </div>
 
       {aviso && (
