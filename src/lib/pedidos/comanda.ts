@@ -1,3 +1,4 @@
+import { LOGO_CUPOM } from "./logoCupom";
 /** Formatação do pedido para o balcão: mensagem de WhatsApp e comanda impressa. */
 export type ItemBalcao = { nome: string; descricao: string | null; quantidade: number; total: number; detalhes: { obs?: string | null } | null };
 export type PedidoBalcao = {
@@ -43,9 +44,10 @@ export function linkMapa(p: PedidoBalcao) {
   return null;
 }
 
-export function textoComanda(p: PedidoBalcao, colunas = 32) {
+export function textoComanda(p: PedidoBalcao, colunas = 32, comNome = true) {
   const l: string[] = [];
-  l.push("TROPICAL AÇAÍ", `PEDIDO #${p.numero}  ${hora(p.created_at)}${p.canal === "whatsapp" ? "  (WhatsApp)" : p.canal === "site" ? "  (Site)" : ""}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(colunas));
+  if (comNome) l.push("TROPICAL AÇAÍ");
+  l.push(`PEDIDO #${p.numero}  ${hora(p.created_at)}${p.canal === "whatsapp" ? "  (WhatsApp)" : p.canal === "site" ? "  (Site)" : ""}`, p.tipo === "entrega" ? "ENTREGA" : p.tipo === "retirada" ? "RETIRADA" : "BALCÃO", "-".repeat(colunas));
   if (p.cliente_nome) l.push(`Cliente: ${p.cliente_nome}`);
   if (p.cliente_telefone) l.push(`Fone: ${p.cliente_telefone}`);
   if (p.tipo === "entrega") { if (p.endereco) l.push(`End.: ${p.endereco}`); if (p.bairro) l.push(`Ref.: ${p.bairro}`); }
@@ -78,19 +80,29 @@ export function salvarPapel(p: Papel) { try { localStorage.setItem("ta_papel", S
  * A página tem exatamente a altura do texto (medida depois de montar), então a impressora
  * não puxa papel em branco antes nem depois. Margens zeradas; largura 58 ou 80 mm.
  */
+export const AGRADECIMENTO = "Obrigado pela preferência!\nVolte sempre ao Tropical Açaí.";
+const CONTATO = "@otropical.acai\nWhatsApp (83) 99352-6981\notropicalacai.com.br";
+
 export function imprimir(p: PedidoBalcao, papel: Papel = papelSalvo()) {
   const w = window.open("", "_blank", "width=380,height=640");
   if (!w) return;
   const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!);
   const util = papel === 58 ? 48 : 72; // área impressa em mm
-  const colunas = papel === 58 ? 30 : 42;
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido #${p.numero}</title><style id="pg">@page{size:${papel}mm 100mm;margin:0}</style><style>html,body{margin:0;padding:0;background:#fff;color:#000}body{width:${util}mm;padding:0 ${(papel - util) / 2}mm;font:bold ${papel === 58 ? 11 : 13}px/1.3 "Courier New",monospace;white-space:pre-wrap;word-break:break-word}</style></head><body><div id="c">${esc(textoComanda(p, colunas))}\n\n</div></body></html>`);
+  const fonte = papel === 58 ? 11 : 13;
+  // Quantos caracteres cabem na linha (Courier ≈ 0,6 da altura da fonte), para os tracejados não quebrarem.
+  const colunas = Math.floor((util * 96) / 25.4 / (fonte * 0.6)) - 1;
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Pedido #${p.numero}</title><style id="pg">@page{size:${papel}mm 100mm;margin:0}</style><style>html,body{margin:0;padding:0;background:#fff;color:#000}body{width:${util}mm;padding:0 ${(papel - util) / 2}mm;font:bold ${fonte}px/1.3 "Courier New",monospace}#t{white-space:pre-wrap;word-break:break-word}.c{text-align:center}#c{padding-bottom:6mm}#logo{display:block;width:${papel === 58 ? 40 : 48}mm;margin:1mm auto 1.5mm}.fim{margin-top:2mm;padding-top:1.5mm;border-top:1px dashed #000;white-space:pre-line}.fim b{font-size:${fonte + 1}px}.fim small{font-size:${fonte - 1}px;font-weight:normal}</style></head><body><div id="c"><img id="logo" src="${LOGO_CUPOM}" alt=""><div id="t">${esc(textoComanda(p, colunas, false))}</div><div class="c fim"><b>${esc(AGRADECIMENTO)}</b>\n<small>${esc(CONTATO)}</small></div></div></body></html>`);
   w.document.close();
+  let feito = false;
   const pronto = () => {
+    if (feito) return; feito = true;
     const alturaMm = Math.ceil((w.document.getElementById("c")!.getBoundingClientRect().height * 25.4) / 96) + 4;
     w.document.getElementById("pg")!.textContent = `@page{size:${papel}mm ${alturaMm}mm;margin:0}`;
     w.focus(); w.print();
     setTimeout(() => w.close(), 500);
   };
-  if (w.document.readyState === "complete") setTimeout(pronto, 50); else w.addEventListener("load", pronto);
+  // Espera o logo carregar para medir a altura certa (sem logo, imprime assim mesmo).
+  const img = w.document.getElementById("logo") as HTMLImageElement | null;
+  if (!img || img.complete) setTimeout(pronto, 50);
+  else { img.onload = () => setTimeout(pronto, 50); img.onerror = () => { img.remove(); setTimeout(pronto, 50); }; setTimeout(pronto, 3000); }
 }
