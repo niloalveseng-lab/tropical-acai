@@ -140,7 +140,8 @@ function NovaCompra({ modo, insumos, avisar, recarregarInsumos, onFim }: { modo:
   const [lidoIA, setLidoIA] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [novoInsumo, setNovoInsumo] = useState<number | null>(null);
-  const entrada = useRef<HTMLInputElement>(null);
+  const camera = useRef<HTMLInputElement>(null);
+  const galeria = useRef<HTMLInputElement>(null);
 
   async function escolher(f: File | undefined) {
     if (!f) return;
@@ -215,8 +216,12 @@ function NovaCompra({ modo, insumos, avisar, recarregarInsumos, onFim }: { modo:
         </div>
       ) : (
         <div className="space-y-3">
-          <input ref={entrada} type="file" accept="image/*,application/pdf" capture="environment" className="hidden" onChange={(e) => escolher(e.target.files?.[0])} />
-          <button onClick={() => entrada.current?.click()} className="botao w-full min-h-[64px] text-lg">📷 Tirar foto / escolher arquivo</button>
+          <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => escolher(e.target.files?.[0])} />
+          <input ref={galeria} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => escolher(e.target.files?.[0])} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button onClick={() => camera.current?.click()} className="botao min-h-[64px] text-lg">📷 Tirar foto agora</button>
+            <button onClick={() => galeria.current?.click()} className="botao-lima min-h-[64px] text-lg">🖼️ Escolher da galeria / PDF</button>
+          </div>
           <button onClick={() => onFim(false)} className="w-full rounded-full bg-gray-100 py-3 font-bold">Voltar</button>
         </div>
       )}

@@ -67,29 +67,53 @@ Regras:
 Insumos da loja:
 ${lista || "(nenhum cadastrado)"}`;
 
-  const modelos = [process.env.ANTHROPIC_MODEL, "claude-sonnet-5-5", "claude-sonnet-4-5"].filter(Boolean) as string[];
+  const cab = { "content-type": "application/json", "x-api-key": chave, "anthropic-version": "2023-06-01" };
+  const corpo = (model: string) => JSON.stringify({
+    model, max_tokens: 4096, tools: [FERRAMENTA], tool_choice: { type: "tool", name: FERRAMENTA.name },
+    messages: [{ role: "user", content: [conteudo, { type: "text", text: texto }] }],
+  });
+
+  const tentados = new Set<string>();
+  let model = await escolherModelo(chave);
   let ultimoErro = "";
-  for (const model of [...new Set(modelos)]) {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": chave, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model, max_tokens: 4096, tools: [FERRAMENTA], tool_choice: { type: "tool", name: FERRAMENTA.name },
-        messages: [{ role: "user", content: [conteudo, { type: "text", text: texto }] }],
-      }),
-      signal: AbortSignal.timeout(55_000),
-    });
+  for (let i = 0; i < 3 && model && !tentados.has(model); i++) {
+    tentados.add(model);
+    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: cab, body: corpo(model), signal: AbortSignal.timeout(55_000) });
     const j = await r.json().catch(() => ({}));
     if (r.ok) {
+      modeloEmUso = model;
       const uso = (j.content ?? []).find((c: { type: string }) => c.type === "tool_use");
       if (!uso) throw new Error("A leitura não retornou dados. Tente outra foto.");
       return uso.input as Lido;
     }
     ultimoErro = j?.error?.message ?? `Erro ${r.status}`;
     if (r.status === 401) throw new Error("A chave ANTHROPIC_API_KEY na Vercel não foi aceita.");
-    if (!(r.status === 404 || /model/i.test(ultimoErro))) break; // só tenta outro modelo se o problema for o modelo
+    if (/credit balance/i.test(ultimoErro)) throw new Error("Sem crédito na conta da Anthropic. Adicione crédito em console.anthropic.com → Billing.");
+    if (r.status !== 404 && !/model/i.test(ultimoErro)) break;
+    // Modelo indisponível nesta conta: pega a lista real e tenta o próximo.
+    modeloEmUso = null;
+    model = (await modelosDaConta(chave)).find((m) => !tentados.has(m)) ?? "";
   }
-  throw new Error("Falha na leitura: " + ultimoErro);
+  throw new Error(/model/i.test(ultimoErro) ? "Nenhum modelo de leitura disponível para esta chave. Confira em console.anthropic.com se a conta está ativa e com crédito." : "Falha na leitura: " + ultimoErro);
+}
+
+/** Modelo que funcionou por último (fica em memória enquanto o servidor estiver de pé). */
+let modeloEmUso: string | null = null;
+
+/** Modelos com visão disponíveis para esta chave, do mais novo para o mais antigo; Sonnet primeiro (melhor custo para ler cupom). */
+async function modelosDaConta(chave: string): Promise<string[]> {
+  const r = await fetch("https://api.anthropic.com/v1/models?limit=100", { headers: { "x-api-key": chave, "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  if (!r?.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  const ids: string[] = (j.data ?? []).map((m: { id: string }) => m.id).filter((id: string) => /^claude-/.test(id) && !/claude-(instant|2)/.test(id));
+  const peso = (id: string) => (/sonnet/.test(id) ? 0 : /opus/.test(id) ? 1 : 2);
+  return ids.map((id, i) => ({ id, i })).sort((a, b) => peso(a.id) - peso(b.id) || a.i - b.i).map((x) => x.id); // a API já devolve do mais novo para o mais antigo
+}
+
+async function escolherModelo(chave: string) {
+  if (process.env.ANTHROPIC_MODEL) return process.env.ANTHROPIC_MODEL;
+  if (modeloEmUso) return modeloEmUso;
+  return (await modelosDaConta(chave))[0] ?? "claude-sonnet-4-5";
 }
 
 const dataValida = (s: unknown) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
