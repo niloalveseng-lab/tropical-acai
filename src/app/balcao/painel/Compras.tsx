@@ -41,25 +41,35 @@ export default function Compras({ avisar }: { avisar: Aviso }) {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [nova, setNova] = useState<null | "foto" | "manual">(null);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [mes, setMes] = useState(agoraSousa().data.slice(0, 7));
+  const [devendo, setDevendo] = useState<Compra[]>([]);
+  const [busca, setBusca] = useState("");
+  const [filtroPago, setFiltroPago] = useState("");
 
   const carregar = useCallback(async () => {
     try {
-      const desde = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10);
-      const [ins, c] = await Promise.all([
+      const sb = supabaseNavegador();
+      const [a, m] = mes.split("-").map(Number);
+      const fim = new Date(Date.UTC(a, m, 1)).toISOString().slice(0, 10);
+      const [ins, c, d] = await Promise.all([
         carregarInsumos(),
-        supabaseNavegador().from("compras").select("*, compra_itens(*)").gte("data", desde).order("data", { ascending: false }).order("created_at", { ascending: false }),
+        sb.from("compras").select("*, compra_itens(*)").gte("data", mes + "-01").lt("data", fim).order("data", { ascending: false }).order("created_at", { ascending: false }),
+        sb.from("compras").select("*, compra_itens(*)").in("pago_com", ["dono", "esposa"]).is("reembolsado_em", null).order("data"),
       ]);
       if (c.error) throw new Error(c.error.message);
-      setInsumos(ins); setCompras(c.data as Compra[]);
+      setInsumos(ins); setCompras(c.data as Compra[]); setDevendo((d.data ?? []) as Compra[]);
     } catch (e) { avisar("erro", "Não foi possível carregar as compras: " + (e as Error).message); }
-  }, [avisar]);
+  }, [avisar, mes]);
   useEffect(() => { carregar(); }, [carregar]);
 
   if (nova) return <NovaCompra modo={nova} insumos={insumos} avisar={avisar} recarregarInsumos={() => carregarInsumos().then(setInsumos)} onFim={(salvou) => { setNova(null); if (salvou) carregar(); }} />;
 
-  const mes = agoraSousa().data.slice(0, 7);
-  const doMes = (compras ?? []).filter((c) => c.data.startsWith(mes));
-  const devendo = (compras ?? []).filter((c) => (c.pago_com === "dono" || c.pago_com === "esposa") && !c.reembolsado_em);
+  const doMes = compras ?? [];
+  const mesAtual = agoraSousa().data.slice(0, 7);
+  const mover = (n: number) => { const [a, m] = mes.split("-").map(Number); setMes(new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 7)); setCompras(null); };
+  const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const visiveis = doMes.filter((c) => (!filtroPago || c.pago_com === filtroPago) &&
+    (!busca || (c.fornecedor ?? "").toLowerCase().includes(busca.toLowerCase()) || c.compra_itens.some((i) => i.descricao.toLowerCase().includes(busca.toLowerCase()))));
 
   async function devolvido(c: Compra) {
     const { error } = await supabaseNavegador().from("compras").update({ reembolsado_em: agoraSousa().data }).eq("id", c.id);
@@ -87,14 +97,31 @@ export default function Compras({ avisar }: { avisar: Aviso }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Compras no mês</div><div className="mt-1 text-2xl font-extrabold text-roxo">{brl(doMes.reduce((s, c) => s + Number(c.total), 0))}</div><div className="text-xs text-roxo/60">{doMes.length} lançamento(s)</div></div>
+        <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Compras em {MESES[Number(mes.slice(5, 7)) - 1].toLowerCase()}</div><div className="mt-1 text-2xl font-extrabold text-roxo">{brl(doMes.reduce((s, c) => s + Number(c.total), 0))}</div><div className="text-xs text-roxo/60">{doMes.length} lançamento(s)</div></div>
         <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Pago do bolso (a devolver)</div><div className={`mt-1 text-2xl font-extrabold ${devendo.length ? "text-amber-700" : "text-roxo"}`}>{brl(devendo.reduce((s, c) => s + Number(c.total), 0))}</div><div className="text-xs text-roxo/60">{devendo.length} compra(s)</div></div>
       </div>
 
-      <Cartao titulo="Compras lançadas" dica="Últimos 90 dias. Toque para ver os itens.">
-        {!compras ? <p>Carregando…</p> : !compras.length ? <p className="text-sm font-semibold text-roxo/60">Nenhuma compra lançada ainda.</p> : (
+      {devendo.length > 0 && (
+        <Cartao titulo="Pago do bolso — a loja ainda deve" dica="De qualquer mês. Marque quando a loja devolver.">
+          <ul className="divide-y divide-roxo/10 text-sm">{devendo.map((c) => (
+            <li key={c.id} className="flex items-center gap-2 py-1.5"><span className="w-12 font-bold text-roxo/70">{c.data.slice(8, 10)}/{c.data.slice(5, 7)}</span><span className="min-w-0 flex-1 truncate">{c.fornecedor ?? "Compra"} · {PAGO_COM[c.pago_com]}</span><b>{brl(c.total)}</b><button onClick={() => devolvido(c)} className="rounded-full bg-lima px-3 py-1 text-xs font-extrabold text-roxo-escuro">Devolvido</button></li>
+          ))}</ul>
+        </Cartao>
+      )}
+
+      <Cartao titulo="Compras lançadas" dica="Toque numa compra para ver os itens. Boletos e faturas pagos depois aparecem também em Financeiro → Contas.">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button onClick={() => mover(-1)} aria-label="Mês anterior" className="grid h-9 w-9 place-items-center rounded-full bg-creme font-extrabold">←</button>
+          <span className="min-w-[130px] text-center font-extrabold text-roxo">{MESES[Number(mes.slice(5, 7)) - 1]} {mes.slice(0, 4)}</span>
+          <button onClick={() => mover(1)} disabled={mes >= mesAtual} aria-label="Próximo mês" className="grid h-9 w-9 place-items-center rounded-full bg-creme font-extrabold disabled:opacity-30">→</button>
+          <select aria-label="Pago com" className="campo !w-auto !py-1.5 text-sm" value={filtroPago} onChange={(e) => setFiltroPago(e.target.value)}>
+            <option value="">Pago com: todos</option>{Object.entries(PAGO_COM).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <input className="campo !w-44 !py-1.5 text-sm" placeholder="Buscar fornecedor/item" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        {!compras ? <p>Carregando…</p> : !visiveis.length ? <p className="text-sm font-semibold text-roxo/60">Nenhuma compra neste mês{busca || filtroPago ? " com esse filtro" : ""}.</p> : (
           <ul className="divide-y divide-roxo/10">
-            {compras.map((c) => {
+            {visiveis.map((c) => {
               const bolso = (c.pago_com === "dono" || c.pago_com === "esposa") && !c.reembolsado_em;
               return (
                 <li key={c.id} className="py-2">

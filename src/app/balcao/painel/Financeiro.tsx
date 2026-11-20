@@ -4,12 +4,13 @@ import { agoraSousa } from "@/lib/pricing";
 import { PAGAMENTO } from "@/lib/pedidos/comanda";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { brl, Cartao, type Aviso } from "./comum";
+import Extrato from "./Extrato";
 import { CAT_CONTA, CATEGORIAS, dataBr, num, PAGO_COM } from "./estoqueComum";
 
 type Conta = { id: string; descricao: string; categoria: string; valor: number; vencimento: string; pago_em: string | null; pago_com: string | null; reembolsado_em: string | null; compra_id: string | null; despesa_fixa_id: string | null; obs: string | null };
 type Fixa = { id: string; descricao: string; categoria: string; valor: number; dia: number; ativo: boolean };
 type Taxa = { forma: string; nome: string; percentual: number; ordem: number };
-type Externa = { id: string; data: string; canal: string; bruto: number; liquido: number; obs: string | null };
+type Externa = { id: string; data: string; canal: string; bruto: number; liquido: number; obs: string | null; por_forma?: Record<string, number> | null };
 type Resultado = {
   vendas_sistema: number; vendas_caderno?: number; dias_caderno?: number; pedidos: number; ticket_medio: number; taxas_cartao: number; externas_bruto: number; externas_liquido: number;
   compras: number; despesas: number; contas_abertas: number; devido_aos_donos: number;
@@ -22,6 +23,8 @@ type Resultado = {
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const somaMes = (mes: string, n: number) => { const [a, m] = mes.split("-").map(Number); const d = new Date(Date.UTC(a, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
 const nomeMes = (mes: string) => `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}`;
+/** Último dia do mês (ou hoje, se for o mês atual). */
+const ultimoDia = (mes: string, hoje: string) => { const d = new Date(Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0)).toISOString().slice(0, 10); return d > hoje ? hoje : d; };
 const titulo = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const diasAte = (hoje: string, d: string) => Math.round((Date.parse(d + "T12:00:00Z") - Date.parse(hoje + "T12:00:00Z")) / 864e5);
 const CANAL: Record<string, string> = { site: "Site", balcao: "Balcão", whatsapp: "WhatsApp", caderno: "Caderno" };
@@ -34,7 +37,8 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
   const [contas, setContas] = useState<Conta[]>([]);
   const [externas, setExternas] = useState<Externa[]>([]);
   const [pagando, setPagando] = useState<Conta | null>(null);
-  const [aba, setAba] = useState<"resumo" | "contas" | "ifood" | "config">("resumo");
+  const [aba, setAba] = useState<"resumo" | "extrato" | "contas" | "ifood" | "config">("resumo");
+  const [periodo, setPeriodo] = useState<{ de: string; ate: string } | null>(null); // null = mês selecionado
   const [novaConta, setNovaConta] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -43,7 +47,7 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
     const limite = somaMes(hoje.slice(0, 7), 2) + "-01"; // contas abertas até o fim do mês que vem
     const [res, ct, ex] = await Promise.all([
       sb.rpc("resultado_mes", { p_mes: ini }),
-      sb.from("contas").select("*").or(`and(pago_em.is.null,vencimento.lt.${limite}),and(vencimento.gte.${ini},vencimento.lt.${fim}),and(pago_com.in.(dono,esposa),reembolsado_em.is.null,pago_em.not.is.null)`).order("vencimento"),
+      sb.from("contas").select("*").or(`and(pago_em.is.null,vencimento.lt.${limite}),and(vencimento.gte.${ini},vencimento.lt.${fim}),and(pago_em.gte.${ini},pago_em.lt.${fim}),and(pago_com.in.(dono,esposa),reembolsado_em.is.null,pago_em.not.is.null)`).order("vencimento"),
       sb.from("entradas_externas").select("*").gte("data", ini).lt("data", fim).order("data", { ascending: false }),
     ]);
     if (res.error || ct.error) return avisar("erro", "Não foi possível carregar o financeiro: " + (res.error ?? ct.error)!.message);
@@ -113,11 +117,11 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 rounded-3xl bg-white p-3 shadow-sm">
-        <button onClick={() => setMes(somaMes(mes, -1))} aria-label="Mês anterior" className="grid h-10 w-10 place-items-center rounded-full bg-creme font-extrabold">←</button>
+        <button onClick={() => { setMes(somaMes(mes, -1)); setPeriodo(null); }} aria-label="Mês anterior" className="grid h-10 w-10 place-items-center rounded-full bg-creme font-extrabold">←</button>
         <span className="min-w-[160px] text-center text-lg font-extrabold text-roxo">{titulo(nomeMes(mes))}</span>
-        <button onClick={() => setMes(somaMes(mes, 1))} disabled={mesAtual} aria-label="Próximo mês" className="grid h-10 w-10 place-items-center rounded-full bg-creme font-extrabold disabled:opacity-30">→</button>
+        <button onClick={() => { setMes(somaMes(mes, 1)); setPeriodo(null); }} disabled={mesAtual} aria-label="Próximo mês" className="grid h-10 w-10 place-items-center rounded-full bg-creme font-extrabold disabled:opacity-30">→</button>
         <div role="tablist" className="ml-auto flex flex-wrap gap-1.5">
-          {([["resumo", "Resultado"], ["contas", `Contas a pagar${vencidas.length ? ` (${vencidas.length}!)` : ""}`], ["ifood", "iFood"], ["config", "Fixas e taxas"]] as const).map(([k, n]) => (
+          {([["resumo", "Resultado"], ["extrato", "Entradas e saídas"], ["contas", `Contas${vencidas.length ? ` (${vencidas.length}!)` : ""}`], ["ifood", "Vendas fora do sistema"], ["config", "Fixas e taxas"]] as const).map(([k, n]) => (
             <button key={k} role="tab" aria-selected={aba === k} onClick={() => setAba(k)} className={`rounded-full px-3.5 py-2 text-sm font-extrabold ${aba === k ? "bg-roxo text-white" : "bg-creme text-roxo"}`}>{n}</button>
           ))}
         </div>
@@ -129,6 +133,22 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
           {proximas.length ? `${proximas.length} vence(m) nos próximos 7 dias: ${proximas.map((c) => `${c.descricao} ${c.vencimento.slice(8, 10)}/${c.vencimento.slice(5, 7)}`).join(", ")}.` : ""}
         </button>
       )}
+
+      {aba === "extrato" && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white p-3 text-sm shadow-sm">
+          <span className="font-bold text-roxo/70">Período:</span>
+          {([["mes", `Mês todo`], ["hoje", "Hoje"], ["7", "Últimos 7 dias"], ["30", "Últimos 30 dias"]] as const).map(([k, n]) => {
+            const alvo = k === "mes" ? null : k === "hoje" ? { de: hoje, ate: hoje } : { de: new Date(Date.parse(hoje + "T12:00:00Z") - (Number(k) - 1) * 864e5).toISOString().slice(0, 10), ate: hoje };
+            const on = JSON.stringify(alvo) === JSON.stringify(periodo);
+            return <button key={k} onClick={() => setPeriodo(alvo)} aria-pressed={on} className={`rounded-full px-3 py-1.5 font-bold ${on ? "bg-roxo text-white" : "bg-creme text-roxo"}`}>{n}</button>;
+          })}
+          <span className="flex items-center gap-1 font-bold text-roxo/70">de
+            <input type="date" aria-label="De" className="campo !w-auto !px-2 !py-1.5" value={periodo?.de ?? mes + "-01"} max={hoje} onChange={(e) => e.target.value && setPeriodo({ de: e.target.value, ate: periodo?.ate ?? ultimoDia(mes, hoje) })} />
+            até <input type="date" aria-label="Até" className="campo !w-auto !px-2 !py-1.5" value={periodo?.ate ?? ultimoDia(mes, hoje)} max={hoje} onChange={(e) => e.target.value && setPeriodo({ de: periodo?.de ?? mes + "-01", ate: e.target.value })} />
+          </span>
+        </div>
+      )}
+      {aba === "extrato" && <Extrato de={periodo?.de ?? mes + "-01"} ate={periodo?.ate ?? ultimoDia(mes, hoje)} avisar={avisar} />}
 
       {pagando && <Pagar conta={pagando} hoje={hoje} avisar={avisar} onFim={(ok) => { setPagando(null); if (ok) carregar(); }} />}
 
@@ -182,8 +202,8 @@ export default function Financeiro({ avisar }: { avisar: Aviso }) {
           {!abertas.length ? <p className="text-sm font-semibold text-roxo/60">Nenhuma conta em aberto. 🎉</p> : <ul className="divide-y divide-roxo/10">{abertas.map(linhaConta)}</ul>}
           {novaConta ? <NovaConta hoje={hoje} avisar={avisar} onFim={(ok) => { setNovaConta(false); if (ok) carregar(); }} /> : <button onClick={() => setNovaConta(true)} className="mt-3 rounded-full bg-roxo/10 px-4 py-2 text-sm font-bold text-roxo">+ Conta avulsa (manutenção, gás…)</button>}
         </Cartao>
-        <Cartao titulo={`Pagas em ${nomeMes(mes)}`}>
-          {(() => { const pagas = contas.filter((c) => c.pago_em && c.vencimento.startsWith(mes)); return !pagas.length ? <p className="text-sm text-roxo/60">Nenhuma ainda.</p> : <ul className="divide-y divide-roxo/10">{pagas.map(linhaConta)}</ul>; })()}
+        <Cartao titulo={`Pagas em ${nomeMes(mes)}`} dica="Inclui boletos e faturas de fornecedor. Veja tudo que saiu (compras também) em “Entradas e saídas”.">
+          {(() => { const pagas = contas.filter((c) => c.pago_em && c.pago_em.startsWith(mes)).sort((a, b) => b.pago_em!.localeCompare(a.pago_em!)); return !pagas.length ? <p className="text-sm text-roxo/60">Nenhuma ainda.</p> : <ul className="divide-y divide-roxo/10">{pagas.map(linhaConta)}</ul>; })()}
         </Cartao>
       </>}
 
@@ -238,6 +258,19 @@ function NovaConta({ hoje, avisar, onFim }: { hoje: string; avisar: Aviso; onFim
 
 function Ifood({ externas, hoje, avisar, recarregar }: { externas: Externa[]; hoje: string; avisar: Aviso; recarregar: () => void }) {
   const [f, setF] = useState({ data: hoje, bruto: "", liquido: "", obs: "" });
+  const [cad, setCad] = useState({ data: hoje, dinheiro: "", pix: "", debito: "", credito: "", obs: "" });
+  const totalCad = num(cad.dinheiro) + num(cad.pix) + num(cad.debito) + num(cad.credito);
+  const so = (t: string) => t.replace(/[^\d,.]/g, "");
+
+  async function salvarCaderno(e: React.FormEvent) {
+    e.preventDefault();
+    if (!(totalCad > 0)) return avisar("erro", "Preencha pelo menos uma forma de pagamento.");
+    const por_forma = Object.fromEntries((["dinheiro", "pix", "debito", "credito"] as const).filter((k) => num(cad[k]) > 0).map((k) => [k, num(cad[k])]));
+    const { error } = await supabaseNavegador().from("entradas_externas").insert({ data: cad.data, canal: "caderno", bruto: totalCad, liquido: totalCad, por_forma, obs: cad.obs.trim() || null });
+    if (error) return avisar("erro", error.code === "23505" ? `O dia ${dataBr(cad.data)} já está lançado. Exclua o lançamento abaixo para lançar de novo.` : error.message);
+    avisar("ok", `Vendas de ${dataBr(cad.data)} lançadas: ${brl(totalCad)}`);
+    setCad({ data: cad.data, dinheiro: "", pix: "", debito: "", credito: "", obs: "" }); recarregar();
+  }
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     const bruto = num(f.bruto), liquido = num(f.liquido);
@@ -246,24 +279,49 @@ function Ifood({ externas, hoje, avisar, recarregar }: { externas: Externa[]; ho
     if (error) return avisar("erro", error.message);
     avisar("ok", "Repasse do iFood lançado"); setF({ data: hoje, bruto: "", liquido: "", obs: "" }); recarregar();
   }
-  async function excluir(id: string) {
-    const { error } = await supabaseNavegador().from("entradas_externas").delete().eq("id", id);
+  async function excluir(x: Externa) {
+    if (!confirm(`Excluir o lançamento de ${dataBr(x.data)} (${brl(x.bruto)})?`)) return;
+    const { error } = await supabaseNavegador().from("entradas_externas").delete().eq("id", x.id);
     if (error) avisar("erro", error.message); else recarregar();
   }
+  const limpaObs = (o: string | null) => (o ?? "").replace(/\s*\[import[^\]]*\]/, "").replace(/^Caixa do caderno\s*/, "");
   return (
-    <Cartao titulo="Vendas do iFood" dica="O iFood não passa pelo sistema. Lance o repasse da semana (Portal do Parceiro → Financeiro): total vendido e o que caiu na conta.">
-      <form onSubmit={salvar} className="grid gap-2 sm:grid-cols-[150px_130px_130px_1fr_auto]">
-        <label className="text-xs font-bold text-roxo/60">Data do repasse<input type="date" className="campo !py-2" value={f.data} max={hoje} onChange={(e) => setF({ ...f, data: e.target.value })} /></label>
-        <label className="text-xs font-bold text-roxo/60">Vendido (bruto)<input inputMode="decimal" className="campo !py-2 text-right" value={f.bruto} onChange={(e) => setF({ ...f, bruto: e.target.value.replace(/[^\d,.]/g, "") })} /></label>
-        <label className="text-xs font-bold text-roxo/60">Recebido (líquido)<input inputMode="decimal" className="campo !py-2 text-right" value={f.liquido} onChange={(e) => setF({ ...f, liquido: e.target.value.replace(/[^\d,.]/g, "") })} /></label>
-        <label className="text-xs font-bold text-roxo/60">Obs.<input className="campo !py-2" value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} maxLength={80} placeholder="Ex.: semana 10 a 16/11" /></label>
-        <button className="botao self-end !min-h-[44px] !py-2">Lançar</button>
-      </form>
-      <ul className="mt-3 divide-y divide-roxo/10 text-sm">
-        {externas.map((x) => <li key={x.id} className="flex items-center gap-2 py-1.5"><span className="w-12 font-bold text-roxo/70">{x.data.slice(8, 10)}/{x.data.slice(5, 7)}</span><span className="flex-1">{x.obs ?? "Repasse iFood"}</span><span>{brl(x.bruto)} → <b>{brl(x.liquido)}</b> <span className="text-xs text-red-800">({x.bruto ? (((x.bruto - x.liquido) / x.bruto) * 100).toFixed(1) : 0}%)</span></span><button onClick={() => excluir(x.id)} aria-label="Excluir repasse" className="text-xs font-bold text-red-700">✕</button></li>)}
-        {!externas.length && <li className="py-2 text-roxo/60">Nenhum repasse neste mês.</li>}
-      </ul>
-    </Cartao>
+    <>
+      <Cartao titulo="Vendas de um dia anotado no caderno" dica="Para dias antes do sistema (meses anteriores) ou dias em que o caixa ficou fora do ar. Um lançamento por dia; não lance dias que já têm vendas no sistema.">
+        <form onSubmit={salvarCaderno} className="grid grid-cols-2 gap-2 sm:grid-cols-[150px_repeat(4,110px)_1fr_auto]">
+          <label className="col-span-2 text-xs font-bold text-roxo/60 sm:col-span-1">Dia<input type="date" className="campo !py-2" value={cad.data} max={hoje} onChange={(e) => setCad({ ...cad, data: e.target.value })} /></label>
+          {(["dinheiro", "pix", "debito", "credito"] as const).map((k) => (
+            <label key={k} className="text-xs font-bold text-roxo/60">{PAGAMENTO[k] ?? k}<input inputMode="decimal" className="campo !py-2 text-right" placeholder="0,00" value={cad[k]} onChange={(e) => setCad({ ...cad, [k]: so(e.target.value) })} /></label>
+          ))}
+          <label className="col-span-2 text-xs font-bold text-roxo/60 sm:col-span-1">Obs.<input className="campo !py-2" value={cad.obs} onChange={(e) => setCad({ ...cad, obs: e.target.value })} maxLength={80} /></label>
+          <button className="botao col-span-2 self-end !min-h-[44px] !py-2 sm:col-span-1">Lançar {totalCad > 0 ? brl(totalCad) : ""}</button>
+        </form>
+      </Cartao>
+
+      <Cartao titulo="Repasse do iFood" dica="O iFood não passa pelo sistema. Lance o repasse da semana (Portal do Parceiro → Financeiro): total vendido e o que caiu na conta.">
+        <form onSubmit={salvar} className="grid gap-2 sm:grid-cols-[150px_130px_130px_1fr_auto]">
+          <label className="text-xs font-bold text-roxo/60">Data do repasse<input type="date" className="campo !py-2" value={f.data} max={hoje} onChange={(e) => setF({ ...f, data: e.target.value })} /></label>
+          <label className="text-xs font-bold text-roxo/60">Vendido (bruto)<input inputMode="decimal" className="campo !py-2 text-right" value={f.bruto} onChange={(e) => setF({ ...f, bruto: so(e.target.value) })} /></label>
+          <label className="text-xs font-bold text-roxo/60">Recebido (líquido)<input inputMode="decimal" className="campo !py-2 text-right" value={f.liquido} onChange={(e) => setF({ ...f, liquido: so(e.target.value) })} /></label>
+          <label className="text-xs font-bold text-roxo/60">Obs.<input className="campo !py-2" value={f.obs} onChange={(e) => setF({ ...f, obs: e.target.value })} maxLength={80} placeholder="Ex.: semana 10 a 16/11" /></label>
+          <button className="botao self-end !min-h-[44px] !py-2">Lançar</button>
+        </form>
+      </Cartao>
+
+      <Cartao titulo="Lançados neste mês">
+        <ul className="divide-y divide-roxo/10 text-sm">
+          {externas.map((x) => (
+            <li key={x.id} className="flex items-center gap-2 py-1.5">
+              <span className="w-12 shrink-0 font-bold text-roxo/70">{x.data.slice(8, 10)}/{x.data.slice(5, 7)}</span>
+              <span className="min-w-0 flex-1"><span className="font-bold">{x.canal === "caderno" ? "Caderno" : x.canal === "ifood" ? "iFood" : "Outra"}</span> <span className="text-xs text-roxo/60">{limpaObs(x.obs)}</span></span>
+              {x.canal === "ifood" ? <span>{brl(x.bruto)} → <b>{brl(x.liquido)}</b></span> : <b>{brl(x.bruto)}</b>}
+              <button onClick={() => excluir(x)} aria-label={`Excluir lançamento de ${dataBr(x.data)}`} className="text-xs font-bold text-red-700">✕</button>
+            </li>
+          ))}
+          {!externas.length && <li className="py-2 text-roxo/60">Nada lançado neste mês.</li>}
+        </ul>
+      </Cartao>
+    </>
   );
 }
 
