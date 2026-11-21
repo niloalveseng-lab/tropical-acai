@@ -51,7 +51,7 @@ const alterarSchema = z.object({
   user_id: z.string().uuid(), funcao: z.enum(FUNCOES).optional(),
   senha: z.string().min(8, "A senha precisa de pelo menos 8 caracteres").max(72).optional(),
   // Ajustes individuais; null volta ao padrão da função.
-  permissoes: z.record(z.enum(PERMISSOES), z.boolean()).nullable().optional(),
+  permissoes: z.partialRecord(z.enum(PERMISSOES), z.boolean()).nullable().optional(),
 });
 
 /** Muda função ou define nova senha. */
