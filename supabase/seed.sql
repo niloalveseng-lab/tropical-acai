@@ -75,3 +75,16 @@ insert into products (id, category_id, nome, descricao, kind, preco, ordem, ativ
  ('agua', 'bebidas', 'Água Mineral', '500 ml', 'simples', 3.00, 1, true),
  ('agua-gas', 'bebidas', 'Água Mineral com Gás', '500 ml', 'simples', 5.00, 2, true)
 on conflict (id) do nothing;
+
+-- Bomboniere
+insert into categories (id, nome, ordem) values ('bomboniere', 'Bomboniere', 7) on conflict (id) do nothing;
+insert into products (id, category_id, nome, descricao, kind, preco, ordem) values
+  ('halls-uva', 'bomboniere', 'Halls Uva Verde', 'Pastilha', 'simples', 3.00, 1),
+  ('halls-morango', 'bomboniere', 'Halls Morango', 'Pastilha', 'simples', 3.00, 2),
+  ('halls-preta', 'bomboniere', 'Halls Preta', 'Pastilha', 'simples', 3.00, 3),
+  ('trident-verde', 'bomboniere', 'Trident Verde', 'Chiclete', 'simples', 4.00, 4),
+  ('trident-azul', 'bomboniere', 'Trident Azul', 'Chiclete', 'simples', 4.00, 5),
+  ('bombom-ouro-branco', 'bomboniere', 'Bombom Ouro Branco', null, 'simples', 2.00, 6),
+  ('bombom-iogurte', 'bomboniere', 'Bombom de Iogurte', null, 'simples', 0.20, 7),
+  ('pirulito', 'bomboniere', 'Pirulito', null, 'simples', 0.50, 8)
+on conflict (id) do nothing;

@@ -9,7 +9,7 @@ export type ItemLista = { id: string; insumo_id: string | null; texto: string | 
 
 export const CATEGORIAS: Record<string, string> = {
   acai_sorvete: "Açaí e sorvetes", cremes: "Cremes e mousses", frutas: "Frutas", insumos: "Complementos",
-  descartaveis: "Descartáveis", mercado: "Mercado / bebidas", outros: "Outros",
+  descartaveis: "Descartáveis", mercado: "Mercado / bebidas", bomboniere: "Bomboniere", outros: "Outros",
 };
 export const FREQUENCIAS: Record<string, string> = { semanal: "Semanal", quinzenal: "Quinzenal", mensal: "Mensal", quando_precisa: "Quando precisar" };
 export const UNIDADES = ["kg", "g", "l", "ml", "un", "cx", "pct"] as const;
