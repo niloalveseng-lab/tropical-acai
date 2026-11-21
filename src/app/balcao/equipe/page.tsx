@@ -8,7 +8,7 @@ type Membro = { user_id: string; nome: string; email: string | null; role: "dono
 const NOME_FUNCAO = { dono: "Dono", gerente: "Gerente", atendente: "Atendente" } as const;
 
 async function api(metodo: string, corpo?: unknown, query = "") {
-  const r = await fetch("/api/equipe" + query, { method: metodo, headers: corpo ? { "content-type": "application/json" } : undefined, body: corpo ? JSON.stringify(corpo) : undefined });
+  const r = await fetch("/api/equipe" + query, { method: metodo, cache: "no-store", headers: corpo ? { "content-type": "application/json" } : undefined, body: corpo ? JSON.stringify(corpo) : undefined });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.erro ?? "Erro " + r.status);
   return j;
@@ -92,7 +92,13 @@ export default function Equipe() {
                       </>
                     )}
                   </div>
-                  {m.role !== "dono" && m.ativo && <Acessos m={m} onMudar={(ajustes, texto) => acao(() => api("PATCH", { user_id: m.user_id, permissoes: ajustes }), texto)} />}
+                  {m.role !== "dono" && m.ativo && <Acessos m={m} onMudar={async (ajustes) => {
+                    // Mostra na hora; se o servidor recusar, volta como estava.
+                    const antes = m.permissoes;
+                    setEquipe((l) => l && l.map((x) => (x.user_id === m.user_id ? { ...x, permissoes: ajustes ?? {} } : x)));
+                    try { await api("PATCH", { user_id: m.user_id, permissoes: ajustes }); return true; }
+                    catch (e) { setEquipe((l) => l && l.map((x) => (x.user_id === m.user_id ? { ...x, permissoes: antes } : x))); setMsg({ tipo: "erro", texto: (e as Error).message }); return false; }
+                  }} />}
                 </li>
               ))}
             </ul>
@@ -104,30 +110,42 @@ export default function Equipe() {
 }
 
 /** Chaves de acesso de uma pessoa. Ligado/desligado diferente do padrão da função fica marcado como ajuste. */
-function Acessos({ m, onMudar }: { m: Membro; onMudar: (ajustes: Partial<Record<Permissao, boolean>> | null, texto: string) => void }) {
+function Acessos({ m, onMudar }: { m: Membro; onMudar: (ajustes: Partial<Record<Permissao, boolean>> | null) => Promise<boolean> }) {
   const funcao = m.role as "gerente" | "atendente";
   const ajustes = m.permissoes ?? {};
+  const [status, setStatus] = useState<{ id: string; tipo: "salvando" | "ok" | "erro" } | null>(null);
   const temAjuste = PERMISSOES.some((p) => ajustes[p.id] !== undefined && ajustes[p.id] !== padrao(funcao, p.id));
-  function alternar(p: Permissao, nome: string) {
+  async function enviar(id: string, proximo: Partial<Record<Permissao, boolean>> | null) {
+    setStatus({ id, tipo: "salvando" });
+    const ok = await onMudar(proximo);
+    setStatus({ id, tipo: ok ? "ok" : "erro" });
+    setTimeout(() => setStatus((s) => (s?.id === id ? null : s)), 2000);
+  }
+  function alternar(p: Permissao) {
     const novo = !efetiva(funcao, ajustes, p);
     const proximo: Partial<Record<Permissao, boolean>> = { ...ajustes, [p]: novo };
     if (novo === padrao(funcao, p)) delete proximo[p]; // igual ao padrão: não precisa guardar
-    onMudar(proximo, `${m.nome}: ${nome} ${novo ? "liberado" : "bloqueado"}.`);
+    enviar(p, proximo);
   }
+  const selo = (id: string) => status?.id === id && (
+    <span className={`ml-1 text-[11px] font-extrabold ${status.tipo === "erro" ? "text-red-700" : status.tipo === "ok" ? "text-green-700" : "text-roxo/50"}`}>
+      {status.tipo === "salvando" ? "salvando…" : status.tipo === "ok" ? "✓ salvo" : "não salvou"}
+    </span>
+  );
   return (
     <div className="mt-3 rounded-2xl bg-creme p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-bold text-roxo/70">
-        <span className="flex-1">O que {m.nome.split(" ")[0]} pode fazer</span>
-        {temAjuste && <button onClick={() => onMudar(null, `${m.nome}: acessos voltaram ao padrão de ${NOME_FUNCAO[funcao].toLowerCase()}.`)} className="underline">Voltar ao padrão</button>}
+        <span className="flex-1">O que {m.nome.split(" ")[0]} pode fazer {selo("todos")}</span>
+        {temAjuste && <button onClick={() => enviar("todos", null)} className="underline">Voltar ao padrão</button>}
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {PERMISSOES.map((p) => {
           const on = efetiva(funcao, ajustes, p.id);
           const ajustado = ajustes[p.id] !== undefined && ajustes[p.id] !== padrao(funcao, p.id);
           return (
-            <label key={p.id} className="flex cursor-pointer items-start gap-2 rounded-xl bg-white p-2.5">
-              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-roxo" checked={on} onChange={() => alternar(p.id, p.nome)} />
-              <span className="min-w-0 text-sm"><span className="font-bold">{p.nome}</span>{ajustado && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-extrabold text-amber-900">ajustado</span>}
+            <label key={p.id} className={`flex cursor-pointer items-start gap-2 rounded-xl p-2.5 ${on ? "bg-white ring-2 ring-lima" : "bg-white"}`}>
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-roxo" checked={on} disabled={status?.tipo === "salvando"} onChange={() => alternar(p.id)} />
+              <span className="min-w-0 text-sm"><span className="font-bold">{p.nome}</span>{ajustado && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-extrabold text-amber-900">ajustado</span>}{selo(p.id)}
                 <span className="block text-xs text-roxo/60">{p.descricao}</span></span>
             </label>
           );
