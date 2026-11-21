@@ -36,3 +36,14 @@ export const num = (s: string) => {
   if (!t) return 0;
   return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t) || 0;
 };
+
+/** Memória de preços (últimos 12 meses), por insumo. Só quem tem acesso ao financeiro recebe dados. */
+export type ResumoPreco = { insumo_id: string; qtd: number; medio: number; menor: number; menor_onde: string | null; menor_data: string; maior: number; maior_onde: string | null; ultimo: number; ultimo_onde: string | null; ultimo_data: string };
+export async function carregarPrecos(): Promise<Map<string, ResumoPreco>> {
+  const { data } = await supabaseNavegador().rpc("precos_insumos");
+  return new Map(((data ?? []) as ResumoPreco[]).map((p) => [p.insumo_id, { ...p, medio: Number(p.medio), menor: Number(p.menor), maior: Number(p.maior), ultimo: Number(p.ultimo) }]));
+}
+/** Nome curto do fornecedor para caber na linha ("Atacado das Balas (Lucivaldo…)" → "Atacado das Balas"). */
+export const onde = (s: string | null | undefined) => (s ?? "").replace(/\s*\(.*\)\s*$/, "").trim() || "—";
+/** Preço por unidade: centavos para itens baratos (copo R$ 0,165). */
+export const precoUn = (n: number, un: string) => `${n < 1 ? "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/${un}`;

@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { brl, Cartao, type Aviso } from "./comum";
-import { abaixo, carregarInsumos, CATEGORIAS, FREQUENCIAS, num, qtd, UNIDADES, type Insumo } from "./estoqueComum";
+import { abaixo, carregarInsumos, carregarPrecos, CATEGORIAS, dataBr, FREQUENCIAS, num, onde, precoUn, qtd, UNIDADES, type Insumo, type ResumoPreco } from "./estoqueComum";
 
+type PrecoHist = { id: number; data: string; preco_unit: number; fornecedor: string | null; origem: string };
 type Mov = { id: number; tipo: string; quantidade: number; saldo: number; obs: string | null; created_at: string };
 const TIPO_MOV: Record<string, string> = { compra: "Compra", contagem: "Contagem", perda: "Perda", ajuste: "Ajuste" };
 
@@ -12,11 +13,15 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
   const [modo, setModo] = useState<"ver" | "contagem" | "perda">("ver");
   const [valores, setValores] = useState<Record<string, string>>({});
   const [editando, setEditando] = useState<Insumo | "novo" | null>(null);
-  const [historico, setHistorico] = useState<{ id: string; movs: Mov[] } | null>(null);
+  const [historico, setHistorico] = useState<{ id: string; movs: Mov[]; precos: PrecoHist[] } | null>(null);
+  const [precos, setPrecos] = useState<Map<string, ResumoPreco>>(new Map());
   const [salvando, setSalvando] = useState(false);
   const [inativos, setInativos] = useState(false);
 
-  const carregar = useCallback(() => carregarInsumos().then(setInsumos, (e) => avisar("erro", (e as Error).message)), [avisar]);
+  const carregar = useCallback(() => {
+    carregarPrecos().then(setPrecos).catch(() => {});
+    return carregarInsumos().then(setInsumos, (e) => avisar("erro", (e as Error).message));
+  }, [avisar]);
   useEffect(() => { carregar(); }, [carregar]);
 
   if (!insumos) return <p className="py-10 text-center font-semibold text-roxo/60">Carregando…</p>;
@@ -35,11 +40,15 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
     setModo("ver"); setValores({}); carregar();
   }
 
-  async function verHistorico(id: string) {
-    if (historico?.id === id) return setHistorico(null);
-    const { data, error } = await supabaseNavegador().from("estoque_movimentos").select("id,tipo,quantidade,saldo,obs,created_at").eq("insumo_id", id).order("id", { ascending: false }).limit(15);
-    if (error) return avisar("erro", error.message);
-    setHistorico({ id, movs: data as Mov[] });
+  async function verHistorico(id: string, recarregar = false) {
+    if (!recarregar && historico?.id === id) return setHistorico(null);
+    const sb = supabaseNavegador();
+    const [m, p] = await Promise.all([
+      sb.from("estoque_movimentos").select("id,tipo,quantidade,saldo,obs,created_at").eq("insumo_id", id).order("id", { ascending: false }).limit(15),
+      sb.from("insumo_precos").select("id,data,preco_unit,fornecedor,origem").eq("insumo_id", id).order("data", { ascending: false }).order("id", { ascending: false }).limit(12),
+    ]);
+    if (m.error) return avisar("erro", m.error.message);
+    setHistorico({ id, movs: m.data as Mov[], precos: (p.data ?? []) as PrecoHist[] });
   }
 
   return (
@@ -74,7 +83,10 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
                   <div className="flex items-center gap-3">
                     <button onClick={() => verHistorico(i.id)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate font-bold">{i.nome}{!i.ativo && " (inativo)"}</span>
-                      <span className="block text-xs text-roxo/60">mín. {qtd(i.minimo, i.unidade)}{i.ultimo_custo ? ` · ${brl(Number(i.ultimo_custo))}/${i.unidade}` : ""} · {FREQUENCIAS[i.frequencia]}{i.fornecedor ? ` · ${i.fornecedor}` : ""}</span>
+                      <span className="block text-xs text-roxo/60">mín. {qtd(i.minimo, i.unidade)} · {FREQUENCIAS[i.frequencia]}{i.fornecedor ? ` · ${i.fornecedor}` : ""}</span>
+                      {precos.get(i.id) && (() => { const pr = precos.get(i.id)!; return (
+                        <span className="block text-xs font-semibold"><span className="text-roxo/70">méd. {precoUn(pr.medio, i.unidade)}</span> · <span className="text-green-800">menor {precoUn(pr.menor, i.unidade)}</span> · <span className="text-red-800">maior {precoUn(pr.maior, i.unidade)}</span></span>
+                      ); })()}
                     </button>
                     {modo === "ver" ? <>
                       <span className={`text-right font-extrabold ${abaixo(i) ? "text-amber-700" : "text-roxo"}`}>{qtd(i.estoque, i.unidade)}</span>
@@ -87,6 +99,9 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
                       </label>
                     )}
                   </div>
+                  {historico?.id === i.id && (
+                    <Precos insumo={i} lista={historico.precos} avisar={avisar} onSalvo={() => { carregar(); verHistorico(i.id, true); }} />
+                  )}
                   {historico?.id === i.id && (
                     <ul className="mt-2 space-y-1 rounded-xl bg-creme p-2 text-xs">
                       {!historico.movs.length ? <li className="text-roxo/60">Sem movimentos ainda.</li> : historico.movs.map((m) => (
@@ -134,5 +149,39 @@ function EditarInsumo({ insumo, avisar, onFim }: { insumo: Insumo | null; avisar
       {insumo && <p className="text-xs text-roxo/60">Para corrigir a quantidade em estoque, use “Fazer contagem”.</p>}
       <div className="flex gap-2"><button type="button" onClick={() => onFim(false)} className="rounded-full bg-gray-100 px-5 font-bold">Cancelar</button><button className="botao flex-1">Salvar</button></div>
     </form>
+  );
+}
+
+/** Histórico de preços do insumo + anotar um preço visto (cotação) sem comprar. */
+function Precos({ insumo, lista, avisar, onSalvo }: { insumo: Insumo; lista: PrecoHist[]; avisar: Aviso; onSalvo: () => void }) {
+  const [f, setF] = useState({ preco: "", onde: "" });
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    const p = num(f.preco);
+    if (!(p > 0)) return avisar("erro", "Informe o preço");
+    const { error } = await supabaseNavegador().from("insumo_precos").insert({ insumo_id: insumo.id, data: new Date().toLocaleDateString("sv-SE", { timeZone: "America/Fortaleza" }), preco_unit: p, fornecedor: f.onde.trim() || null, origem: "cotacao" });
+    if (error) return avisar("erro", error.message);
+    avisar("ok", "Preço anotado"); onSalvo();
+  }
+  async function apagar(id: number) {
+    const { error } = await supabaseNavegador().from("insumo_precos").delete().eq("id", id).eq("origem", "cotacao");
+    if (error) avisar("erro", error.message); else onSalvo();
+  }
+  return (
+    <div className="mt-2 rounded-xl bg-white p-2 text-xs ring-1 ring-roxo/10">
+      <div className="mb-1 font-extrabold text-roxo">Preços (por {insumo.unidade})</div>
+      {!lista.length ? <p className="text-roxo/60">Nenhum preço ainda. Entram sozinhos a cada compra lançada.</p> : (
+        <ul className="space-y-0.5">{lista.map((p) => (
+          <li key={p.id} className="flex gap-2"><span className="w-16 shrink-0 text-roxo/60">{dataBr(p.data).slice(0, 5)}/{p.data.slice(2, 4)}</span><span className="flex-1">{onde(p.fornecedor)}{p.origem === "cotacao" && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-bold text-amber-900">cotação</span>}</span><b>{precoUn(Number(p.preco_unit), insumo.unidade)}</b>
+            {p.origem === "cotacao" && <button onClick={() => apagar(p.id)} aria-label="Apagar cotação" className="text-red-700">✕</button>}</li>
+        ))}</ul>
+      )}
+      <form onSubmit={salvar} className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="font-bold text-roxo/70">Vi um preço:</span>
+        <input inputMode="decimal" aria-label="Preço por unidade" placeholder={`R$/${insumo.unidade}`} className="campo !w-24 !px-2 !py-1.5 text-right text-xs" value={f.preco} onChange={(e) => setF({ ...f, preco: e.target.value.replace(/[^\d,.]/g, "") })} />
+        <input aria-label="Onde" placeholder="Onde (ex.: Atacadão)" className="campo !w-40 !px-2 !py-1.5 text-xs" value={f.onde} onChange={(e) => setF({ ...f, onde: e.target.value })} maxLength={60} />
+        <button className="rounded-lg bg-roxo px-3 py-1.5 font-bold text-white">Anotar</button>
+      </form>
+    </div>
   );
 }

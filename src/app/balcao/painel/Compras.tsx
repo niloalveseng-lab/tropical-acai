@@ -4,7 +4,7 @@ import { confereTotal } from "@/lib/compras/casar";
 import { agoraSousa } from "@/lib/pricing";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { brl, Cartao, type Aviso } from "./comum";
-import { carregarInsumos, CATEGORIAS, dataBr, FORMAS, num, PAGO_COM, qtd, UNIDADES, type Insumo } from "./estoqueComum";
+import { carregarInsumos, CATEGORIAS, dataBr, FORMAS, num, PAGO_COM, qtd, UNIDADES, type Insumo, carregarPrecos, precoUn, type ResumoPreco } from "./estoqueComum";
 
 type Compra = {
   id: string; data: string; fornecedor: string | null; total: number; forma: string; pago_com: string; vencimento: string | null;
@@ -167,6 +167,8 @@ function NovaCompra({ modo, insumos, avisar, recarregarInsumos, onFim }: { modo:
   const [lidoIA, setLidoIA] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [novoInsumo, setNovoInsumo] = useState<number | null>(null);
+  const [precos, setPrecos] = useState<Map<string, ResumoPreco>>(new Map());
+  useEffect(() => { carregarPrecos().then(setPrecos).catch(() => {}); }, []);
   const camera = useRef<HTMLInputElement>(null);
   const galeria = useRef<HTMLInputElement>(null);
 
@@ -304,6 +306,17 @@ function NovaCompra({ modo, insumos, avisar, recarregarInsumos, onFim }: { modo:
                     </label>
                   )}
                 </div>
+                {it.insumo_id && ins && num(it.qtd_estoque) > 0 && num(it.valor) > 0 && (() => {
+                  const un = num(it.valor) / num(it.qtd_estoque);
+                  const pr = precos.get(it.insumo_id);
+                  const fora = pr && pr.qtd > 0 && (un < pr.medio * 0.4 || un > pr.medio * 2.5);
+                  return (
+                    <p className={`mt-1.5 text-xs font-semibold ${fora ? "rounded-lg bg-red-50 px-2 py-1 text-red-800" : "text-roxo/60"}`}>
+                      = {precoUn(un, ins.unidade)}{pr ? ` · média ${precoUn(pr.medio, ins.unidade)} (menor ${precoUn(pr.menor, ins.unidade)})` : ""}
+                      {fora && ` — muito diferente da média. Confira a quantidade em ${ins.unidade} (ex.: 800 g = 0,8 kg).`}
+                    </p>
+                  );
+                })()}
                 {novoInsumo === i && <CadastroRapido nome={it.descricao} avisar={avisar} onPronto={async (id) => { setNovoInsumo(null); if (id) { await recarregarInsumos(); mudar(i, { insumo_id: id, qtd_estoque: it.quantidade, origem: null }); } }} />}
               </li>
             );

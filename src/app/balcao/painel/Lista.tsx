@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { Cartao, type Aviso } from "./comum";
-import { abaixo, carregarInsumos, CATEGORIAS, FREQUENCIAS, qtd, type Insumo, type ItemLista } from "./estoqueComum";
+import { abaixo, carregarInsumos, carregarPrecos, CATEGORIAS, FREQUENCIAS, onde, precoUn, qtd, type Insumo, type ItemLista, type ResumoPreco } from "./estoqueComum";
 
 /** Lista de compras: a equipe marca o que está acabando; o dono vê tudo separado por frequência e manda pelo WhatsApp. */
 export default function Lista({ avisar, euId, financeiro }: { avisar: Aviso; euId: string; financeiro: boolean }) {
@@ -11,6 +11,7 @@ export default function Lista({ avisar, euId, financeiro }: { avisar: Aviso; euI
   const [meuNome, setMeuNome] = useState("");
   const [avulso, setAvulso] = useState("");
   const [busca, setBusca] = useState("");
+  const [precos, setPrecos] = useState<Map<string, ResumoPreco>>(new Map());
 
   const carregar = useCallback(async () => {
     try {
@@ -23,6 +24,7 @@ export default function Lista({ avisar, euId, financeiro }: { avisar: Aviso; euI
     carregar();
     supabaseNavegador().from("staff").select("nome").eq("user_id", euId).maybeSingle().then(({ data }) => setMeuNome(data?.nome ?? ""));
   }, [carregar, euId]);
+  useEffect(() => { if (financeiro) carregarPrecos().then(setPrecos).catch(() => {}); }, [financeiro]);
 
   const naLista = useMemo(() => new Map(lista.filter((l) => l.insumo_id).map((l) => [l.insumo_id!, l])), [lista]);
 
@@ -55,7 +57,13 @@ export default function Lista({ avisar, euId, financeiro }: { avisar: Aviso; euI
   const insumoDe = (l: ItemLista) => (l.insumo_id ? insumos.find((i) => i.id === l.insumo_id) ?? null : null);
   const grupos: Record<string, ItemLista[]> = {};
   for (const l of lista) { const ins = insumoDe(l); (grupos[ins ? FREQUENCIAS[ins.frequencia] : "Outros"] ??= []).push(l); }
-  const nomeItem = (l: ItemLista) => { const ins = insumoDe(l); return ins ? ins.nome + (ins.fornecedor ? ` (${ins.fornecedor})` : "") : l.texto ?? ""; };
+  const nomeItem = (l: ItemLista) => {
+    const ins = insumoDe(l);
+    if (!ins) return l.texto ?? "";
+    const pr = precos.get(ins.id);
+    const faixa = pr ? ` — méd. ${precoUn(pr.medio, ins.unidade)} · menor ${precoUn(pr.menor, ins.unidade)} (${onde(pr.menor_onde)})` : "";
+    return ins.nome + (ins.fornecedor ? ` (${ins.fornecedor})` : "") + faixa;
+  };
   const sugeridos = financeiro ? insumos.filter((i) => abaixo(i) && !naLista.has(i.id)) : [];
   const texto = "*Lista de compras — Tropical Açaí*\n" + Object.entries(grupos).map(([g, itens]) => `\n*${g}*\n` + itens.map((x) => "• " + nomeItem(x)).join("\n")).join("\n");
 
@@ -77,13 +85,23 @@ export default function Lista({ avisar, euId, financeiro }: { avisar: Aviso; euI
             {Object.entries(grupos).map(([g, itens]) => (
               <div key={g}>
                 <div className="mb-1 text-xs font-extrabold uppercase tracking-wider text-roxo/60">{g}</div>
-                <ul className="flex flex-wrap gap-2">
+                <ul className="space-y-1.5">
                   {itens.map((l) => {
                     const ins = insumoDe(l);
+                    const pr = ins ? precos.get(ins.id) : undefined;
                     return (
-                      <li key={l.id} className="flex items-center gap-1 rounded-full bg-lima/30 py-1 pl-3 pr-1 text-sm font-bold text-roxo-escuro">
-                        {ins?.nome ?? l.texto}{l.pedido_por_nome && <span className="text-xs font-semibold text-roxo/60">· {l.pedido_por_nome.split(" ")[0]}</span>}
-                        <button onClick={() => tirar(l.id)} aria-label={`Tirar ${ins?.nome ?? l.texto} da lista`} className="grid h-6 w-6 place-items-center rounded-full bg-white/70 text-xs">✕</button>
+                      <li key={l.id} className="flex items-center gap-2 rounded-2xl bg-lima/25 py-1.5 pl-3 pr-1.5 text-sm text-roxo-escuro">
+                        <span className="min-w-0 flex-1">
+                          <span className="font-bold">{ins?.nome ?? l.texto}</span>{l.pedido_por_nome && <span className="text-xs font-semibold text-roxo/60"> · {l.pedido_por_nome.split(" ")[0]}</span>}
+                          {financeiro && ins && (pr ? (
+                            <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs font-semibold">
+                              <span>Médio <b>{precoUn(pr.medio, ins.unidade)}</b></span>
+                              <span className="text-green-800">Menor <b>{precoUn(pr.menor, ins.unidade)}</b> · {onde(pr.menor_onde)}</span>
+                              <span className="text-red-800">Maior <b>{precoUn(pr.maior, ins.unidade)}</b> · {onde(pr.maior_onde)}</span>
+                            </span>
+                          ) : <span className="block text-xs text-roxo/50">Sem preço ainda — aparece depois da primeira compra</span>)}
+                        </span>
+                        <button onClick={() => tirar(l.id)} aria-label={`Tirar ${ins?.nome ?? l.texto} da lista`} className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/70 text-xs">✕</button>
                       </li>
                     );
                   })}
