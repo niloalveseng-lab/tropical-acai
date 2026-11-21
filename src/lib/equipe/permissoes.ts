@@ -7,7 +7,8 @@ export const PERMISSOES = [
   { id: "relatorios", nome: "Relatórios", descricao: "Faturamento, mais vendidos, caixas e entregas" },
   { id: "cardapio", nome: "Cardápio e preços", descricao: "Preços, itens, fotos e promoções" },
   { id: "loja", nome: "Loja e entrega", descricao: "Horários, taxas de entrega, local e contato" },
-  { id: "financeiro", nome: "Financeiro e estoque", descricao: "Compras, estoque, contas a pagar e resultado do mês" },
+  { id: "estoque", nome: "Estoque", descricao: "Ver o estoque, fazer contagem e registrar perdas (sem valores)" },
+  { id: "financeiro", nome: "Financeiro", descricao: "Compras, custos, contas a pagar e resultado do mês (inclui o estoque)" },
 ] as const;
 
 export type Permissao = (typeof PERMISSOES)[number]["id"];

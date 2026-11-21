@@ -8,7 +8,7 @@ type PrecoHist = { id: number; data: string; preco_unit: number; fornecedor: str
 type Mov = { id: number; tipo: string; quantidade: number; saldo: number; obs: string | null; created_at: string };
 const TIPO_MOV: Record<string, string> = { compra: "Compra", contagem: "Contagem", perda: "Perda", ajuste: "Ajuste" };
 
-export default function Estoque({ avisar }: { avisar: Aviso }) {
+export default function Estoque({ avisar, financeiro = true }: { avisar: Aviso; financeiro?: boolean }) {
   const [insumos, setInsumos] = useState<Insumo[] | null>(null);
   const [modo, setModo] = useState<"ver" | "contagem" | "perda">("ver");
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -54,13 +54,13 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Valor em estoque</div><div className="mt-1 text-2xl font-extrabold text-roxo">{brl(valorTotal)}</div><div className="text-xs text-roxo/60">pelo custo da última compra</div></div>
+        {financeiro && <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Valor em estoque</div><div className="mt-1 text-2xl font-extrabold text-roxo">{brl(valorTotal)}</div><div className="text-xs text-roxo/60">pelo custo da última compra</div></div>}
         <div className="rounded-2xl bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-wider text-roxo/60">Abaixo do mínimo</div><div className={`mt-1 text-2xl font-extrabold ${baixos.length ? "text-amber-700" : "text-roxo"}`}>{baixos.length}</div><div className="truncate text-xs text-roxo/60">{baixos.map((b) => b.nome).join(", ") || "tudo certo"}</div></div>
         <div className="col-span-2 flex flex-wrap items-center gap-2 rounded-2xl bg-white p-4 shadow-sm lg:col-span-1">
           {modo === "ver" ? <>
             <button onClick={() => setModo("contagem")} className="botao flex-1 !min-h-[44px] !py-2 text-sm">Fazer contagem</button>
             <button onClick={() => setModo("perda")} className="flex-1 rounded-full bg-red-50 px-4 py-2.5 text-sm font-extrabold text-red-700">Registrar perda</button>
-            <button onClick={() => setEditando("novo")} className="w-full rounded-full bg-roxo/10 px-4 py-2 text-sm font-bold text-roxo">+ Novo insumo</button>
+            {financeiro && <button onClick={() => setEditando("novo")} className="w-full rounded-full bg-roxo/10 px-4 py-2 text-sm font-bold text-roxo">+ Novo insumo</button>}
           </> : <>
             <button onClick={() => { setModo("ver"); setValores({}); }} className="rounded-full bg-gray-100 px-4 py-2.5 text-sm font-bold">Cancelar</button>
             <button onClick={salvarModo} disabled={salvando} className="botao flex-1 !min-h-[44px] !py-2 text-sm">{salvando ? "Salvando…" : modo === "contagem" ? "Salvar contagem" : "Salvar perda"}</button>
@@ -84,13 +84,13 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
                     <button onClick={() => verHistorico(i.id)} className="min-w-0 flex-1 text-left">
                       <span className="block truncate font-bold">{i.nome}{!i.ativo && " (inativo)"}</span>
                       <span className="block text-xs text-roxo/60">mín. {qtd(i.minimo, i.unidade)} · {FREQUENCIAS[i.frequencia]}{i.fornecedor ? ` · ${i.fornecedor}` : ""}</span>
-                      {precos.get(i.id) && (() => { const pr = precos.get(i.id)!; return (
+                      {financeiro && precos.get(i.id) && (() => { const pr = precos.get(i.id)!; return (
                         <span className="block text-xs font-semibold"><span className="text-roxo/70">méd. {precoUn(pr.medio, i.unidade)}</span> · <span className="text-green-800">menor {precoUn(pr.menor, i.unidade)}</span> · <span className="text-red-800">maior {precoUn(pr.maior, i.unidade)}</span></span>
                       ); })()}
                     </button>
                     {modo === "ver" ? <>
                       <span className={`text-right font-extrabold ${abaixo(i) ? "text-amber-700" : "text-roxo"}`}>{qtd(i.estoque, i.unidade)}</span>
-                      <button onClick={() => setEditando(i)} aria-label={`Editar ${i.nome}`} className="rounded-full bg-creme px-3 py-1.5 text-xs font-bold">Editar</button>
+                      {financeiro && <button onClick={() => setEditando(i)} aria-label={`Editar ${i.nome}`} className="rounded-full bg-creme px-3 py-1.5 text-xs font-bold">Editar</button>}
                     </> : (
                       <label className="flex items-center gap-1 text-sm font-bold text-roxo/60">
                         {modo === "contagem" && <span className="hidden text-xs sm:inline">era {qtd(i.estoque)}</span>}
@@ -99,7 +99,7 @@ export default function Estoque({ avisar }: { avisar: Aviso }) {
                       </label>
                     )}
                   </div>
-                  {historico?.id === i.id && (
+                  {financeiro && historico?.id === i.id && (
                     <Precos insumo={i} lista={historico.precos} avisar={avisar} onSalvo={() => { carregar(); verHistorico(i.id, true); }} />
                   )}
                   {historico?.id === i.id && (

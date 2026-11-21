@@ -25,7 +25,7 @@ const ABAS = [
 ] as const;
 
 /** Qual permissão libera cada aba. A lista de compras é de toda a equipe. */
-const PERMISSAO_DA_ABA: Record<string, string | null> = { lista: null, compras: "financeiro", estoque: "financeiro", financeiro: "financeiro" };
+const PERMISSAO_DA_ABA: Record<string, string | null> = { lista: null, compras: "financeiro", estoque: "estoque", financeiro: "financeiro" };
 
 export default function Painel() {
   const eu = useEquipe();
@@ -47,7 +47,7 @@ export default function Painel() {
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return <main className="grid min-h-dvh place-items-center p-6 text-center">O painel precisa do banco de dados (Supabase) configurado.</main>;
   if (!eu || !dados) return <main className="grid min-h-dvh place-items-center text-roxo">{aviso?.texto ?? "Carregando…"}</main>;
-  const abas = ABAS.filter((a) => { const p = a.id in PERMISSAO_DA_ABA ? PERMISSAO_DA_ABA[a.id] : a.id; return p === null || eu.pode[p]; });
+  const abas = ABAS.filter((a) => { const p = a.id in PERMISSAO_DA_ABA ? PERMISSAO_DA_ABA[a.id] : a.id; return p === null || eu.pode[p] || (p === "estoque" && eu.pode.financeiro); });
   if (!abas.length) return <main className="grid min-h-dvh place-items-center p-6 text-center"><div className="space-y-3"><p className="font-semibold">Você ainda não tem acesso a nenhuma parte do painel.</p><Link href="/balcao" className="botao">Voltar aos pedidos</Link></div></main>;
   const atual = abas.some((a) => a.id === aba) ? aba : abas[0].id;
 
@@ -75,7 +75,7 @@ export default function Painel() {
         {atual === "relatorios" && <Relatorios avisar={avisar} />}
         {atual === "lista" && <Lista avisar={avisar} euId={eu.id} financeiro={!!eu.pode.financeiro} />}
         {atual === "compras" && <Compras avisar={avisar} />}
-        {atual === "estoque" && <Estoque avisar={avisar} />}
+        {atual === "estoque" && <Estoque avisar={avisar} financeiro={!!eu.pode.financeiro} />}
         {atual === "financeiro" && <Financeiro avisar={avisar} />}
       </div>
 

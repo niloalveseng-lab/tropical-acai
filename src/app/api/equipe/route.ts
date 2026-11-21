@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   } catch (e) { return falha(e); }
 }
 
-const PERMISSOES = ["caixa", "cancelar", "esgotado", "historico", "relatorios", "cardapio", "loja", "financeiro"] as const;
+const PERMISSOES = ["caixa", "cancelar", "esgotado", "historico", "relatorios", "cardapio", "loja", "estoque", "financeiro"] as const;
 const alterarSchema = z.object({
   user_id: z.string().uuid(), funcao: z.enum(FUNCOES).optional(),
   senha: z.string().min(8, "A senha precisa de pelo menos 8 caracteres").max(72).optional(),
