@@ -50,6 +50,7 @@ export function tocarTom(ctx: AudioContext, tom: Tom, volume: number) {
     g.gain.exponentialRampToValueAtTime(pico, base + n.t + 0.015);
     g.gain.exponentialRampToValueAtTime(0.0001, base + n.t + n.d);
     o.connect(g).connect(ctx.destination);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
     o.start(base + n.t); o.stop(base + n.t + n.d + 0.05);
   }
 }

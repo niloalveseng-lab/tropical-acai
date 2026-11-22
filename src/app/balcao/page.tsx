@@ -48,21 +48,35 @@ export default function Balcao() {
   const audio = useRef<AudioContext | null>(null);
   const vistos = useRef<Set<string> | null>(null);
 
+  // Uma consulta por vez: se chegar outro aviso no meio, roda mais uma no fim (nunca empilha).
+  // Cada consulta tem limite de 15 s, para uma resposta perdida não deixar a tela presa.
+  const emCurso = useRef(false), pendente = useRef(false), ultimoOk = useRef(Date.now());
   const carregar = useCallback(async () => {
-    const { data, error } = await sb().from("orders").select(CAMPOS)
-      .or(`status.in.(novo,preparo,pronto,saiu),created_at.gte.${inicioDoDia()}`)
-      .neq("status", "aguardando_pagamento")
-      .order("created_at", { ascending: false }).limit(300);
-    if (error) return setErro("Não foi possível carregar os pedidos: " + error.message);
-    setErro("");
-    const lista = (data ?? []) as unknown as PedidoBalcao[];
-    // Toca quando aparece um pedido novo que ainda não tinha sido visto.
-    if (vistos.current) {
-      const chegou = lista.some((p) => p.status === "novo" && !vistos.current!.has(p.id));
-      if (chegou) tocarRef.current();
+    if (emCurso.current) { pendente.current = true; return; }
+    emCurso.current = true;
+    try {
+      const { data, error } = await sb().from("orders").select(CAMPOS)
+        .or(`status.in.(novo,preparo,pronto,saiu),created_at.gte.${inicioDoDia()}`)
+        .neq("status", "aguardando_pagamento")
+        .order("created_at", { ascending: false }).limit(300)
+        .abortSignal(AbortSignal.timeout(15_000));
+      if (error) { setErro("Não foi possível carregar os pedidos: " + error.message); return; }
+      ultimoOk.current = Date.now();
+      setErro("");
+      const lista = (data ?? []) as unknown as PedidoBalcao[];
+      // Toca quando aparece um pedido novo que ainda não tinha sido visto.
+      if (vistos.current) {
+        const chegou = lista.some((p) => p.status === "novo" && !vistos.current!.has(p.id));
+        if (chegou) tocarRef.current();
+      }
+      vistos.current = new Set(lista.map((p) => p.id));
+      setPedidos(lista);
+    } catch (e) {
+      setErro("Sem resposta do servidor — tentando de novo… " + (e instanceof Error ? e.message : ""));
+    } finally {
+      emCurso.current = false;
+      if (pendente.current) { pendente.current = false; setTimeout(carregar, 300); }
     }
-    vistos.current = new Set(lista.map((p) => p.id));
-    setPedidos(lista);
   }, [sb]);
 
   // Login, função e permissões
@@ -77,17 +91,54 @@ export default function Balcao() {
     })();
   }, [sb, router]);
 
-  // Pedidos em tempo real + conferência a cada 30 s (se a conexão cair)
+  // Pedidos em tempo real + conferência a cada 30 s.
+  // Se a conexão ao vivo cair (aba em segundo plano, Wi-Fi, computador hibernou), refaz sozinha.
   useEffect(() => {
     if (!eu) return;
+    let canal: ReturnType<ReturnType<typeof sb>["channel"]> | null = null;
+    let caiuEm = 0, aviso: ReturnType<typeof setTimeout> | undefined;
+    const conectar = () => {
+      if (canal) sb().removeChannel(canal);
+      caiuEm = 0;
+      canal = sb().channel("pedidos-balcao-" + Date.now())
+        .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+          // Um pedido gera vários avisos seguidos: junta tudo numa consulta só.
+          clearTimeout(aviso); aviso = setTimeout(carregar, 400);
+        })
+        .subscribe((s) => {
+          const ok = s === "SUBSCRIBED", caiu = s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED";
+          setConexao(ok ? "ok" : caiu ? "caiu" : "...");
+          if (ok) { caiuEm = 0; carregar(); } else if (caiu && !caiuEm) caiuEm = Date.now();
+        });
+    };
     carregar();
-    const canal = sb().channel("pedidos-balcao")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => carregar())
-      .subscribe((s) => setConexao(s === "SUBSCRIBED" ? "ok" : s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED" ? "caiu" : "..."));
-    const t = setInterval(carregar, 30_000);
-    const volta = () => document.visibilityState === "visible" && carregar();
-    document.addEventListener("visibilitychange", volta);
-    return () => { sb().removeChannel(canal); clearInterval(t); document.removeEventListener("visibilitychange", volta); };
+    conectar();
+    const vigia = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      carregar();
+      // Ao vivo caído há mais de 1 min, ou nenhuma consulta deu certo em 2 min: reconecta do zero.
+      if ((caiuEm && Date.now() - caiuEm > 60_000) || Date.now() - ultimoOk.current > 120_000) {
+        sb().realtime.connect();
+        conectar();
+      }
+    }, 30_000);
+    const voltou = () => {
+      if (document.visibilityState !== "visible") return;
+      carregar();
+      if (canal?.state !== "joined") conectar();
+    };
+    document.addEventListener("visibilitychange", voltou);
+    document.addEventListener("resume", voltou); // Chrome "congela" abas paradas; isso avisa quando descongela
+    window.addEventListener("online", voltou);
+    window.addEventListener("pageshow", voltou);
+    return () => {
+      clearInterval(vigia); clearTimeout(aviso);
+      if (canal) sb().removeChannel(canal);
+      document.removeEventListener("visibilitychange", voltou);
+      document.removeEventListener("resume", voltou);
+      window.removeEventListener("online", voltou);
+      window.removeEventListener("pageshow", voltou);
+    };
   }, [eu, sb, carregar]);
 
   // Som: configuração deste aparelho; o navegador só libera áudio depois de um toque na página.
@@ -117,7 +168,7 @@ export default function Balcao() {
   useEffect(() => {
     if (!cfgSom?.telaAcesa || !("wakeLock" in navigator)) return;
     let trava: WakeLockSentinel | null = null;
-    const pedir = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { trava = t; }).catch(() => {}); };
+    const pedir = () => { if (document.visibilityState === "visible") navigator.wakeLock.request("screen").then((t) => { trava?.release().catch(() => {}); trava = t; }).catch(() => {}); };
     pedir();
     document.addEventListener("visibilitychange", pedir);
     return () => { document.removeEventListener("visibilitychange", pedir); trava?.release().catch(() => {}); };
@@ -155,7 +206,8 @@ export default function Balcao() {
     && (!termo || String(p.numero) === termo.replace("#", "") || (p.cliente_nome ?? "").toLowerCase().includes(termo)));
   // Abertos: fila na ordem de chegada (o mais antigo em cima). Concluídos: o mais recente em cima.
   const lista = aba === "abertos" ? filtrar(pedidos.filter((p) => emAberto(p.status))).reverse() : filtrar(pedidos.filter((p) => !emAberto(p.status)));
-  const hoje = pedidos.filter((p) => p.created_at >= inicioDoDia() && p.status !== "cancelado");
+  const ini = inicioDoDia();
+  const hoje = pedidos.filter((p) => p.created_at >= ini && p.status !== "cancelado");
   const faturado = hoje.reduce((s, p) => s + Number(p.total), 0);
   const aReceber = pedidos.filter((p) => p.status !== "cancelado" && !p.pago).reduce((s, p) => s + Number(p.total), 0);
   const entregadores = Array.from(new Set(pedidos.map((p) => p.entregador).filter(Boolean))) as string[];
@@ -238,7 +290,7 @@ function LinhaPedido({ p, aberto, onAlternar, onAtualizar, pode, entregadores }:
   const minutos = Math.floor((Date.now() - new Date(p.created_at).getTime()) / 60000);
   const resumoItens = p.order_items.slice(0, 2).map((i) => `${i.quantidade}× ${i.nome}`).join(", ") + (p.order_items.length > 2 ? ` +${p.order_items.length - 2}` : "");
   return (
-    <motion.li layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={p.status === "novo" ? "bg-amber-50" : ""}>
+    <motion.li initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={p.status === "novo" ? "bg-amber-50" : ""}>
       <div className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
         <button onClick={onAlternar} aria-expanded={aberto} className="flex min-w-0 flex-1 items-center gap-3 text-left">
           <span className="w-12 shrink-0 text-lg font-extrabold text-roxo">#{p.numero}</span>
