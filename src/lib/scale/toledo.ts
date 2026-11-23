@@ -89,15 +89,16 @@ export class ToledoScale {
   get conectada() { return !!this.port; }
 
   async desconectar() {
-    try { await this.port?.close(); } finally { this.port = null; }
+    try { await this.port?.close(); } catch { /* já fechada */ } finally { this.port = null; }
   }
 
   /** Envia ENQ e aguarda a resposta (até `timeoutMs`). */
   async lerPeso(timeoutMs = 800): Promise<ScaleReading> {
     if (!this.port?.writable || !this.port.readable) throw new Error("Balança desconectada");
+    // Sem limite de tempo, um cabo/adaptador que não responde deixava o caixa preso em "Lendo…".
+    const limite = <T,>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, falha) => setTimeout(() => falha(new Error("a balança não respondeu (confira o cabo/adaptador)")), ms))]);
     const w = this.port.writable.getWriter();
-    await w.write(new Uint8Array([ENQ]));
-    w.releaseLock();
+    try { await limite(w.write(new Uint8Array([ENQ])), timeoutMs); } finally { try { w.releaseLock(); } catch { /* escrita presa: a porta é fechada em seguida */ } }
 
     const r = this.port.readable.getReader();
     let buf = new Uint8Array(0);

@@ -12,6 +12,7 @@ import Lista from "./Lista";
 import Compras from "./Compras";
 import Estoque from "./Estoque";
 import Financeiro from "./Financeiro";
+import Fornecedores from "./Fornecedores";
 
 const ABAS = [
   { id: "esgotado", nome: "Esgotado hoje" },
@@ -20,12 +21,13 @@ const ABAS = [
   { id: "lista", nome: "Lista de compras" },
   { id: "compras", nome: "Compras" },
   { id: "estoque", nome: "Estoque" },
+  { id: "fornecedores", nome: "Fornecedores" },
   { id: "financeiro", nome: "Financeiro" },
   { id: "relatorios", nome: "Relatórios" },
 ] as const;
 
 /** Qual permissão libera cada aba. A lista de compras é de toda a equipe. */
-const PERMISSAO_DA_ABA: Record<string, string | null> = { lista: null, compras: "financeiro", estoque: "estoque", financeiro: "financeiro" };
+const PERMISSAO_DA_ABA: Record<string, string | null> = { lista: null, compras: "financeiro", estoque: "estoque", fornecedores: "financeiro", financeiro: "financeiro" };
 
 export default function Painel() {
   const eu = useEquipe();
@@ -76,6 +78,7 @@ export default function Painel() {
         {atual === "lista" && <Lista avisar={avisar} euId={eu.id} financeiro={!!eu.pode.financeiro} />}
         {atual === "compras" && <Compras avisar={avisar} />}
         {atual === "estoque" && <Estoque avisar={avisar} financeiro={!!eu.pode.financeiro} />}
+        {atual === "fornecedores" && <Fornecedores avisar={avisar} />}
         {atual === "financeiro" && <Financeiro avisar={avisar} />}
       </div>
 

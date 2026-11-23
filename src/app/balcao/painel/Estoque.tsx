@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { brl, Cartao, type Aviso } from "./comum";
 import { abaixo, carregarInsumos, carregarPrecos, CATEGORIAS, dataBr, FREQUENCIAS, num, onde, precoUn, qtd, UNIDADES, type Insumo, type ResumoPreco } from "./estoqueComum";
@@ -60,7 +60,7 @@ export default function Estoque({ avisar, financeiro = true }: { avisar: Aviso; 
           {modo === "ver" ? <>
             <button onClick={() => setModo("contagem")} className="botao flex-1 !min-h-[44px] !py-2 text-sm">Fazer contagem</button>
             <button onClick={() => setModo("perda")} className="flex-1 rounded-full bg-red-50 px-4 py-2.5 text-sm font-extrabold text-red-700">Registrar perda</button>
-            {financeiro && <button onClick={() => setEditando("novo")} className="w-full rounded-full bg-roxo/10 px-4 py-2 text-sm font-bold text-roxo">+ Novo insumo</button>}
+            <button onClick={() => setEditando("novo")} className="w-full rounded-full bg-roxo/10 px-4 py-2 text-sm font-bold text-roxo">+ Novo insumo</button>
           </> : <>
             <button onClick={() => { setModo("ver"); setValores({}); }} className="rounded-full bg-gray-100 px-4 py-2.5 text-sm font-bold">Cancelar</button>
             <button onClick={salvarModo} disabled={salvando} className="botao flex-1 !min-h-[44px] !py-2 text-sm">{salvando ? "Salvando…" : modo === "contagem" ? "Salvar contagem" : "Salvar perda"}</button>
@@ -70,7 +70,7 @@ export default function Estoque({ avisar, financeiro = true }: { avisar: Aviso; 
 
       {modo !== "ver" && <p className="rounded-2xl bg-lima/30 px-4 py-3 text-sm font-semibold text-roxo-escuro">{modo === "contagem" ? "Digite quanto tem de cada item agora. Deixe em branco o que não contou — fica como está." : "Digite quanto se perdeu (venceu, estragou, caiu). Sai do estoque e aparece como perda."}</p>}
 
-      {editando && <EditarInsumo insumo={editando === "novo" ? null : editando} avisar={avisar} onFim={(ok) => { setEditando(null); if (ok) carregar(); }} />}
+      {editando === "novo" && <EditarInsumo insumo={null} avisar={avisar} onFim={(ok) => { setEditando(null); if (ok) carregar(); }} />}
 
       {Object.entries(CATEGORIAS).map(([c, nome]) => {
         const l = visiveis.filter((i) => i.categoria === c);
@@ -90,7 +90,7 @@ export default function Estoque({ avisar, financeiro = true }: { avisar: Aviso; 
                     </button>
                     {modo === "ver" ? <>
                       <span className={`text-right font-extrabold ${abaixo(i) ? "text-amber-700" : "text-roxo"}`}>{qtd(i.estoque, i.unidade)}</span>
-                      {financeiro && <button onClick={() => setEditando(i)} aria-label={`Editar ${i.nome}`} className="rounded-full bg-creme px-3 py-1.5 text-xs font-bold">Editar</button>}
+                      <button onClick={() => setEditando(editando !== "novo" && editando?.id === i.id ? null : i)} aria-expanded={editando !== "novo" && editando?.id === i.id} aria-label={`Editar ${i.nome}`} className="rounded-full bg-creme px-3 py-1.5 text-xs font-bold">Editar</button>
                     </> : (
                       <label className="flex items-center gap-1 text-sm font-bold text-roxo/60">
                         {modo === "contagem" && <span className="hidden text-xs sm:inline">era {qtd(i.estoque)}</span>}
@@ -99,6 +99,7 @@ export default function Estoque({ avisar, financeiro = true }: { avisar: Aviso; 
                       </label>
                     )}
                   </div>
+                  {editando !== "novo" && editando?.id === i.id && <div className="mt-2"><EditarInsumo insumo={i} avisar={avisar} onFim={(ok) => { setEditando(null); if (ok) carregar(); }} /></div>}
                   {financeiro && historico?.id === i.id && (
                     <Precos insumo={i} lista={historico.precos} avisar={avisar} onSalvo={() => { carregar(); verHistorico(i.id, true); }} />
                   )}
@@ -124,30 +125,44 @@ function EditarInsumo({ insumo, avisar, onFim }: { insumo: Insumo | null; avisar
   const [f, setF] = useState({
     nome: insumo?.nome ?? "", categoria: insumo?.categoria ?? "insumos", unidade: insumo?.unidade ?? "un",
     minimo: insumo ? String(insumo.minimo).replace(".", ",") : "", fornecedor: insumo?.fornecedor ?? "", frequencia: insumo?.frequencia ?? "semanal", ativo: insumo?.ativo ?? true,
+    estoque: "",
   });
+  const [salvando, setSalvando] = useState(false);
+  const caixa = useRef<HTMLFormElement>(null);
+  // O formulário abre embaixo do item; rola até ele para não parecer que o botão não fez nada.
+  useEffect(() => { caixa.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); caixa.current?.querySelector("input")?.focus({ preventScroll: true }); }, []);
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
-    const dados = { nome: f.nome.trim(), categoria: f.categoria, unidade: f.unidade, minimo: num(f.minimo), fornecedor: f.fornecedor.trim() || null, frequencia: f.frequencia, ativo: f.ativo };
-    if (dados.nome.length < 2) return avisar("erro", "Informe o nome");
+    if (f.nome.trim().length < 2) return avisar("erro", "Informe o nome");
+    setSalvando(true);
     const sb = supabaseNavegador();
-    const { error } = insumo ? await sb.from("insumos").update(dados).eq("id", insumo.id) : await sb.from("insumos").insert(dados);
-    if (error) return avisar("erro", error.code === "23505" ? "Já existe um insumo com esse nome." : error.message);
+    const { data: id, error } = await sb.rpc("salvar_insumo", {
+      p_id: insumo?.id ?? null, p_nome: f.nome.trim(), p_categoria: f.categoria, p_unidade: f.unidade, p_minimo: num(f.minimo),
+      p_fornecedor: f.fornecedor.trim() || null, p_frequencia: f.frequencia, p_ativo: f.ativo,
+    });
+    if (error) { setSalvando(false); return avisar("erro", /duplicate|23505/.test(error.message + error.code) ? "Já existe um insumo com esse nome." : error.message); }
+    if (f.estoque.trim() !== "") {
+      const c = await sb.rpc("registrar_contagem", { itens: [{ insumo_id: id, quantidade: num(f.estoque) }], p_tipo: "contagem", p_obs: "Ajuste pelo Editar" });
+      if (c.error) { setSalvando(false); return avisar("erro", "Dados salvos, mas a quantidade não: " + c.error.message); }
+    }
+    setSalvando(false);
     avisar("ok", insumo ? "Insumo atualizado" : "Insumo cadastrado"); onFim(true);
   }
   return (
-    <form onSubmit={salvar} className="space-y-3 rounded-3xl border-2 border-roxo/20 bg-white p-4 shadow-sm">
+    <form ref={caixa} onSubmit={salvar} className="scroll-mt-28 space-y-3 rounded-3xl border-2 border-roxo/20 bg-white p-4 shadow-sm">
       <h3 className="text-lg font-extrabold text-roxo">{insumo ? `Editar ${insumo.nome}` : "Novo insumo"}</h3>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="sm:col-span-2"><span className="rotulo">Nome</span><input className="campo" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} maxLength={60} required /></label>
         <label><span className="rotulo">Categoria</span><select className="campo" value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })}>{Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
         <label><span className="rotulo">Unidade</span><select className="campo" value={f.unidade} onChange={(e) => setF({ ...f, unidade: e.target.value })}>{UNIDADES.map((u) => <option key={u}>{u}</option>)}</select></label>
+        <label><span className="rotulo">Quantidade agora ({f.unidade})</span><input inputMode="decimal" className="campo" value={f.estoque} onChange={(e) => setF({ ...f, estoque: e.target.value.replace(/[^\d,.]/g, "") })} placeholder={insumo ? `hoje: ${qtd(insumo.estoque)}` : "0"} /></label>
         <label><span className="rotulo">Estoque mínimo</span><input inputMode="decimal" className="campo" value={f.minimo} onChange={(e) => setF({ ...f, minimo: e.target.value.replace(/[^\d,.]/g, "") })} placeholder="0" /></label>
         <label><span className="rotulo">Compra</span><select className="campo" value={f.frequencia} onChange={(e) => setF({ ...f, frequencia: e.target.value })}>{Object.entries(FREQUENCIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-        <label className="sm:col-span-2"><span className="rotulo">Fornecedor (opcional)</span><input className="campo" value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} maxLength={60} placeholder="Ex.: Mais Sabor, Flor de Lis, Atacadão" /></label>
-        <label className="flex items-end gap-2 pb-3 text-sm font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={f.ativo} onChange={(e) => setF({ ...f, ativo: e.target.checked })} />Ativo</label>
+        <label className="sm:col-span-2"><span className="rotulo">Fornecedor (opcional)</span><input className="campo" value={f.fornecedor} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} maxLength={60} placeholder="Ex.: Mais Sabor, Flor de Lis, Atacado das Balas" /></label>
+        <label className="flex items-end gap-2 pb-3 text-sm font-semibold"><input type="checkbox" className="h-5 w-5 accent-roxo" checked={f.ativo} onChange={(e) => setF({ ...f, ativo: e.target.checked })} />Ativo (aparece na lista e na contagem)</label>
       </div>
-      {insumo && <p className="text-xs text-roxo/60">Para corrigir a quantidade em estoque, use “Fazer contagem”.</p>}
-      <div className="flex gap-2"><button type="button" onClick={() => onFim(false)} className="rounded-full bg-gray-100 px-5 font-bold">Cancelar</button><button className="botao flex-1">Salvar</button></div>
+      {insumo && <p className="text-xs text-roxo/60">Deixe “Quantidade agora” em branco para não mexer no estoque. Se preencher, fica registrado como contagem.</p>}
+      <div className="flex gap-2"><button type="button" onClick={() => onFim(false)} className="rounded-full bg-gray-100 px-5 font-bold">Cancelar</button><button disabled={salvando} className="botao flex-1">{salvando ? "Salvando…" : "Salvar"}</button></div>
     </form>
   );
 }

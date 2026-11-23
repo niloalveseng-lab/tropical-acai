@@ -288,7 +288,7 @@ function Quilo({ store, c, onAdd, onErro }: { store: CaixaStore; c: Cardapio; on
       const r = await balanca.current.lerEstavel();
       if (r.status === "estavel") { setPeso(String(r.gramas)); setEstado("Peso lido da balança ✓"); }
       else setEstado({ instavel: "Peso instável — aguarde parar de oscilar e leia de novo.", negativo: "Peso negativo — zere a balança.", sobrecarga: "Sobrecarga na balança.", invalido: "A balança não respondeu. Confira o cabo e o parâmetro C14 = Prt3." }[r.status]);
-    } catch (e) { balanca.current = null; setEstado(""); onErro("Balança: " + (e as Error).message); }
+    } catch (e) { balanca.current?.desconectar().catch(() => {}); balanca.current = null; setEstado(""); onErro("Balança: " + (e as Error).message); }
   }
 
   const bruto = Math.round(Number(peso) || 0), t = Math.round(Number(tara) || 0), liquido = Math.max(0, bruto - t);
