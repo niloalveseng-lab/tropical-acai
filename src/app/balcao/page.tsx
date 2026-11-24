@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { emAberto, proximo, ROTULO, type Status } from "@/lib/pedidos/status";
-import { brl, CAMPOS, hora, imprimir, linkMapa, linkWhatsApp, PAGAMENTO, papelSalvo, salvarPapel, type Papel, type PedidoBalcao } from "@/lib/pedidos/comanda";
+import { autoImpressaoDesde, brl, CAMPOS, hora, imprimir, imprimirNovos, ligarAutoImpressao, linkMapa, linkWhatsApp, PAGAMENTO, papelSalvo, salvarPapel, type Papel, type PedidoBalcao } from "@/lib/pedidos/comanda";
 
 
 /** 00:00 de hoje em Sousa-PB (UTC−3), em ISO. */
@@ -44,6 +44,9 @@ export default function Balcao() {
   const [cfgSom, setCfgSom] = useState<ConfigSom | null>(null);
   const [somLiberado, setSomLiberado] = useState(false);
   const [painelSom, setPainelSom] = useState(false);
+  const [painelImp, setPainelImp] = useState(false);
+  const [autoImp, setAutoImp] = useState(false);
+  useEffect(() => setAutoImp(!!autoImpressaoDesde()), []);
   const [erro, setErro] = useState("");
   const audio = useRef<AudioContext | null>(null);
   const vistos = useRef<Set<string> | null>(null);
@@ -71,6 +74,7 @@ export default function Balcao() {
       }
       vistos.current = new Set(lista.map((p) => p.id));
       setPedidos(lista);
+      imprimirNovos(lista);
     } catch (e) {
       setErro("Sem resposta do servidor — tentando de novo… " + (e instanceof Error ? e.message : ""));
     } finally {
@@ -226,13 +230,14 @@ export default function Balcao() {
             <Link href="/balcao/painel" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Painel</Link>
             {eu.pode.equipe && <Link href="/balcao/equipe" className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Equipe</Link>}
             <button onClick={() => setPainelSom((x) => !x)} aria-expanded={painelSom} aria-label="Som de novos pedidos" className={`rounded-full px-3 py-1.5 font-bold ${cfgSom?.ligado ? "bg-white/15 hover:bg-white/25" : "bg-red-500/80"}`}>{cfgSom?.ligado ? "🔔" : "🔕"} Som</button>
-            <SeletorPapel />
+            <button onClick={() => setPainelImp((x) => !x)} aria-expanded={painelImp} aria-label="Impressora" className={`rounded-full px-3 py-1.5 font-bold ${autoImp ? "bg-white/15 hover:bg-white/25" : "bg-white/10 hover:bg-white/20"}`}>🖨️ {autoImp ? "Auto" : "Impressora"}</button>
             <button onClick={sair} className="rounded-full bg-white/15 px-3 py-1.5 font-bold hover:bg-white/25">Sair</button>
           </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-6xl px-4">
+        {painelImp && <PainelImpressora auto={autoImp} onAuto={(v) => { ligarAutoImpressao(v); setAutoImp(v); }} teste={pedidos[0]} onFechar={() => setPainelImp(false)} />}
         {painelSom && cfgSom && <PainelSom cfg={cfgSom} onMudar={mudarSom} testar={(c) => { try { audio.current ??= new AudioContext(); audio.current.resume(); tocarTom(audio.current, c.tom, c.volume); setSomLiberado(true); } catch { /* sem áudio */ } }} onFechar={() => setPainelSom(false)} />}
         {cfgSom?.ligado && !somLiberado && (
           <button onClick={() => tocar(true)} className="mt-4 w-full rounded-2xl bg-amber-400 px-4 py-3 text-left font-extrabold text-amber-950 shadow">
@@ -419,18 +424,38 @@ function Historico({ pode, onAtualizar, entregadores }: { pode: Permissoes; onAt
   );
 }
 
-/** Largura do papel da impressora deste computador (fica salva no navegador). */
-function SeletorPapel() {
+/** Impressora deste computador: largura do papel e impressão automática (ficam salvas no navegador). */
+function PainelImpressora({ auto, onAuto, teste, onFechar }: { auto: boolean; onAuto: (v: boolean) => void; teste?: PedidoBalcao; onFechar: () => void }) {
   const [papel, setPapel] = useState<Papel>(58);
   useEffect(() => setPapel(papelSalvo()), []);
   return (
-    <label className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 font-bold" title="Largura do papel da impressora térmica">
-      🖨️
-      <select aria-label="Largura do papel da impressora" className="bg-transparent font-bold outline-none [&>option]:text-black" value={papel} onChange={(e) => { const v = Number(e.target.value) as Papel; setPapel(v); salvarPapel(v); }}>
-        <option value={58}>58 mm</option>
-        <option value={80}>80 mm</option>
-      </select>
-    </label>
+    <section aria-label="Configurar impressora" className="mt-4 space-y-4 rounded-3xl bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-2">
+        <h2 className="flex-1 text-lg font-extrabold text-roxo">Impressora deste computador</h2>
+        <button onClick={onFechar} className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-bold">Fechar</button>
+      </div>
+      <label className="flex items-center gap-3 rounded-2xl bg-creme p-3 font-bold">
+        <input type="checkbox" className="h-6 w-6 accent-roxo" checked={auto} onChange={(e) => onAuto(e.target.checked)} />
+        <span className="flex-1">Imprimir sozinho quando chegar pedido<span className="block text-xs font-semibold text-roxo/60">Ligue só no computador que tem a impressora. Vale para pedidos que chegarem a partir de agora, em qualquer tela do balcão (Pedidos, Caixa, Painel).</span></span>
+      </label>
+      <div className="flex flex-wrap items-end gap-3">
+        <label><span className="rotulo">Largura do papel</span>
+          <select className="campo !w-36" value={papel} onChange={(e) => { const v = Number(e.target.value) as Papel; setPapel(v); salvarPapel(v); }}>
+            <option value={58}>58 mm</option><option value={80}>80 mm</option>
+          </select>
+        </label>
+        {teste && <button onClick={() => imprimir(teste)} className="rounded-full bg-roxo/10 px-4 py-2.5 font-bold text-roxo">Imprimir teste (pedido #{teste.numero})</button>}
+      </div>
+      <details className="rounded-2xl bg-creme/70 p-3 text-sm">
+        <summary className="cursor-pointer font-extrabold text-roxo">Para imprimir sem a tela de confirmação do Chrome</summary>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>No Windows, deixe a <b>Mobile Printer BT</b> como impressora padrão.</li>
+          <li>Crie um atalho do Chrome na área de trabalho e, em Propriedades → Destino, acrescente no final: <code className="rounded bg-white px-1">--kiosk-printing</code></li>
+          <li>Feche todas as janelas do Chrome e abra o balcão por esse atalho.</li>
+        </ol>
+        <p className="mt-2 text-roxo/70">Sem isso, a comanda abre a tela de impressão e é só apertar Enter.</p>
+      </details>
+    </section>
   );
 }
 

@@ -2,13 +2,14 @@
 /**
  * Aviso de pedido novo nas outras telas do balcão (Caixa, Painel, Equipe).
  * A tela de Pedidos já tem o próprio aviso; aqui é para quem está vendendo no Caixa
- * não perder um pedido do site/WhatsApp. Toca o mesmo som configurado em 🔔 Som.
+ * não perder um pedido do site/WhatsApp. Toca o mesmo som configurado em 🔔 Som e, se ligado, imprime a comanda sozinho.
  */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseNavegador } from "@/lib/supabase/client";
 import { lerConfigSom, tocarTom } from "@/lib/pedidos/som";
+import { CAMPOS, imprimirNovos, type PedidoBalcao } from "@/lib/pedidos/comanda";
 
 type Novo = { id: string; numero: number; cliente_nome: string | null; canal: string };
 
@@ -34,10 +35,11 @@ export default function AvisoPedidos() {
     if (emCurso.current) return;
     emCurso.current = true;
     try {
-      const { data, error } = await supabaseNavegador().from("orders").select("id,numero,cliente_nome,canal")
+      const { data, error } = await supabaseNavegador().from("orders").select(CAMPOS)
         .eq("status", "novo").order("created_at").limit(20).abortSignal(AbortSignal.timeout(15_000));
       if (error || !data) return;
-      const lista = data as Novo[];
+      const lista = data as unknown as (Novo & PedidoBalcao)[];
+      imprimirNovos(lista);
       if (vistos.current && lista.some((p) => !vistos.current!.has(p.id))) tocar();
       vistos.current = new Set(lista.map((p) => p.id));
       setNovos(lista);
