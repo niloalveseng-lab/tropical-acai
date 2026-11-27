@@ -14,3 +14,35 @@ body { @apply bg-creme text-roxo-escuro antialiased; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 .leaflet-container { font-family: inherit; }
+
+/* ---------- Movimento e toque (loja) ---------- */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); }
+html { -webkit-tap-highlight-color: transparent; }
+button, a, summary, label { touch-action: manipulation; }
+
+/* Tudo que é tocável afunda um pouco no toque: a interface "ouviu" */
+.pressionavel { transition: transform 160ms var(--ease-out); }
+.pressionavel:active:not(:disabled) { transform: scale(0.97); }
+/* Elevação no passar do mouse só onde existe mouse (no celular o toque dispararia o hover) */
+@media (hover: hover) and (pointer: fine) {
+  .levanta { transition: transform 220ms var(--ease-out), box-shadow 220ms var(--ease-out); }
+  .levanta:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 1px 2px rgb(42 10 68 / .06), 0 12px 28px -8px rgb(42 10 68 / .22); }
+  .levanta:active:not(:disabled) { transform: scale(0.97); }
+}
+.sombra-suave { box-shadow: 0 1px 2px rgb(42 10 68 / .05), 0 6px 18px -10px rgb(42 10 68 / .18); }
+
+/* Abertura: a foto "enche" de baixo para cima, como o açaí no copo; o título sobe por trás de uma máscara.
+   Roda uma vez, em CSS (fora da linha principal do navegador, suave mesmo carregando a página). */
+@keyframes encher { from { clip-path: inset(100% 0 0 0 round 28px); transform: scale(1.06); } to { clip-path: inset(0 0 0 0 round 28px); transform: none; } }
+@keyframes subir { from { transform: translateY(108%); } to { transform: none; } }
+@keyframes surgir { from { opacity: 0; transform: translateY(var(--dist, 10px)); } to { opacity: 1; transform: none; } }
+@keyframes so-aparecer { from { opacity: 0; } }
+.mascara { display: block; overflow: hidden; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.entra-foto { animation: encher 820ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.entra-linha { display: block; animation: subir 680ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.entra { animation: surgir 560ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+@media (prefers-reduced-motion: reduce) {
+  .entra-foto, .entra-linha, .entra { animation: so-aparecer 260ms ease both; animation-delay: 0ms; }
+  .pressionavel:active:not(:disabled) { transform: none; }
+}
+.sem-barra { scrollbar-width: none; } .sem-barra::-webkit-scrollbar { display: none; }

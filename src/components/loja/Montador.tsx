@@ -10,11 +10,11 @@ import { brl, corDoItem } from "./util";
 const chip = (ativo: boolean) =>
   `rounded-full border-2 px-3.5 py-2 text-sm font-semibold transition active:scale-95 ${ativo ? "border-roxo bg-roxo text-white" : "border-roxo/15 bg-white text-roxo-escuro hover:border-roxo/40"}`;
 
-export function Montador({ cardapio, embalagemInicial, onAdicionar }: { cardapio: Cardapio; embalagemInicial: "Copo" | "Pote"; onAdicionar: (item: CartItem) => void }) {
+export function Montador({ cardapio, embalagemInicial, tamanhoInicial, onAdicionar }: { cardapio: Cardapio; embalagemInicial: "Copo" | "Pote"; tamanhoInicial?: string; onAdicionar: (item: CartItem) => void }) {
   const hoje = agoraSousa().data;
   const tamanhos = (e: string) => cardapio.sizes.filter((s) => s.ativo && s.embalagem === e);
   const [emb, setEmb] = useState<"Copo" | "Pote">(embalagemInicial);
-  const [sizeId, setSizeId] = useState(tamanhos(embalagemInicial)[0]?.id ?? "");
+  const [sizeId, setSizeId] = useState(tamanhos(embalagemInicial).find((t) => t.id === tamanhoInicial)?.id ?? tamanhos(embalagemInicial)[0]?.id ?? "");
   const [baseId, setBaseId] = useState(cardapio.bases.find((b) => b.ativo)?.id ?? "");
   const [ids, setIds] = useState<string[]>([]);
   const [qtd, setQtd] = useState(1);

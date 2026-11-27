@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -12,6 +12,9 @@ export const metadata: Metadata = {
   description: "Açaí, milkshakes, sorvetes e picolés em Sousa-PB. Peça online para entrega ou retirada.",
   openGraph: { title: "Tropical Açaí", description: "O sabor gelado para os dias quentes", images: ["/img/logo.png"], locale: "pt_BR" },
 };
+
+// Barra do navegador no celular com a cor da marca (combina com o cabeçalho)
+export const viewport: Viewport = { themeColor: "#2a0a44" };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
